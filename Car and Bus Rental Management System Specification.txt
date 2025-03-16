@@ -1,0 +1,4500 @@
+# Car and Bus Rental Management System Specification
+**Version 1.0**
+
+**Prepared for:** UAE Rental Office  
+**Date:** March 15, 2025
+
+## Table of Contents
+1. [Introduction](#1-introduction)
+2. [System Architecture](#2-system-architecture)
+3. [Database Schema](#3-database-schema)
+4. [User Roles and Permissions](#4-user-roles-and-permissions)
+5. [Module Specifications](#5-module-specifications)
+6. [UAE Compliance Requirements](#6-uae-compliance-requirements)
+7. [Cash-Only Payment Processing](#7-cash-only-payment-processing)
+8. [Document Management](#8-document-management)
+9. [API Endpoint Specifications](#9-api-endpoint-specifications)
+10. [Data Validation Rules](#10-data-validation-rules)
+11. [Internationalization Implementation](#11-internationalization-implementation)
+12. [State Management and Transaction Boundaries](#12-state-management-and-transaction-boundaries)
+13. [Error Handling and User Feedback](#13-error-handling-and-user-feedback)
+14. [Testing Requirements](#14-testing-requirements)
+15. [Deployment Instructions](#15-deployment-instructions)
+16. [Performance Optimization](#16-performance-optimization)
+17. [Security Considerations](#17-security-considerations)
+18. [User Interface Specifications](#18-user-interface-specifications)
+19. [Domain-Specific Terminology](#19-domain-specific-terminology)
+20. [Implementation Recommendations](#20-implementation-recommendations)
+21. [Appendices](#21-appendices)
+
+---
+
+## 1. Introduction
+
+### 1.1 Purpose
+This document provides a comprehensive specification for developing a Car and Bus Rental Management System for a small rental office in the UAE. It serves as a complete blueprint for development, detailing all technical and functional requirements.
+
+### 1.2 Scope
+The system will manage all aspects of vehicle rental operations, including vehicle inventory, customer management, rental agreements, payments, maintenance tracking, and reporting. It will be built entirely with Rust technologies and support both Arabic and English languages.
+
+### 1.3 System Overview
+The Car and Bus Rental Management System will streamline rental operations, enhance customer service, ensure regulatory compliance, and provide comprehensive data management with bilingual support. It will be a locally hosted solution that eliminates dependency on cloud services.
+
+### 1.4 Target Users
+- Rental office administrators
+- Sales employees
+- Indirectly: customers seeking vehicle rentals
+
+---
+
+## 2. System Architecture
+
+### 2.1 Technology Stack
+
+#### 2.1.1 Frontend
+- **Framework**: Leptos (Rust-based reactive framework)
+- **Compilation Target**: WebAssembly (WASM)
+- **State Management**: Leptos built-in reactive state
+- **UI Components**: Custom components with Tailwind CSS for styling
+- **Internationalization**: Fluent.js integrated with Leptos for RTL support
+
+#### 2.1.2 Backend
+- **Framework**: Axum (Rust-based web server framework)
+- **API Design**: RESTful with JSON payloads
+- **Authentication**: JWT (JSON Web Tokens) with secure storage
+- **Authorization**: Role-based access control (RBAC)
+- **Database Access**: SQLx for type-safe SQL queries
+- **File Storage**: Locally managed file system with structured directories
+- **Logging**: tracing crate with JSON-formatted logs
+- **Error Handling**: thiserror and anyhow crates for error management
+
+#### 2.1.3 Database
+- **DBMS**: PostgreSQL 15 or newer
+- **Connection Pool**: deadpool-postgres
+- **Migrations**: sqlx-cli for schema migrations
+- **Backup**: pg_dump scheduled tasks
+
+#### 2.1.4 Development Tools
+- **Build System**: Cargo (Rust package manager)
+- **Testing**: cargo test with integration and unit tests
+- **Documentation**: rustdoc
+- **Code Quality**: clippy, rustfmt
+- **Version Control**: Git
+
+### 2.2 System Components
+
+#### 2.2.1 Architecture Diagram
+```
++------------------------------------------+
+|              Web Browser                 |
+|                                          |
+|  +----------------------------------+    |
+|  |           Leptos UI              |    |
+|  | (WASM compiled from Rust)        |    |
+|  +----------------------------------+    |
++---------------------|------------------+
+                     |
+                     | HTTP/WebSocket
+                     |
++---------------------|------------------+
+|  +----------------------------------+    |
+|  |           Axum Server            |    |
+|  |                                  |    |
+|  |  +-------------+ +------------+  |    |
+|  |  | API Handlers | | WebSockets |  |    |
+|  |  +-------------+ +------------+  |    |
+|  |                                  |    |
+|  |  +-------------+ +------------+  |    |
+|  |  | Services    | | Middleware  |  |    |
+|  |  +-------------+ +------------+  |    |
+|  +----------------------------------+    |
+|                   |                      |
+|  +----------------------------------+    |
+|  |        SQLx PostgreSQL           |    |
+|  +----------------------------------+    |
+|                   |                      |
+|  +----------------------------------+    |
+|  |      Local File Storage          |    |
+|  |  (Documents, Images, Reports)    |    |
+|  +----------------------------------+    |
++------------------------------------------+
+```
+
+#### 2.2.2 Component Descriptions
+
+1. **Leptos UI (Frontend)**
+   - Renders the user interface in the browser
+   - Manages client-side state and user interactions
+   - Handles form validation and submission
+   - Provides bilingual interface with RTL support for Arabic
+   - Compiles to WebAssembly for efficient execution
+
+2. **Axum Server (Backend)**
+   - Processes HTTP requests from the frontend
+   - Implements business logic and data validation
+   - Enforces authentication and authorization
+   - Manages database transactions
+   - Handles file uploads and storage
+   - Generates reports and exports
+
+3. **PostgreSQL Database**
+   - Stores all system data
+   - Enforces data integrity through constraints
+   - Supports complex queries for reporting
+   - Handles concurrent access
+
+4. **Local File Storage**
+   - Organizes uploaded documents in a structured directory system
+   - Stores customer identification documents
+   - Stores vehicle registration and insurance documents
+   - Stores generated reports and receipts
+
+### 2.3 Communication Flow
+
+1. **Client-Server Communication**
+   - RESTful API with JSON payloads
+   - WebSockets for real-time notifications (optional)
+   - JWT-based authentication with secure tokens
+
+2. **Server-Database Communication**
+   - Connection pooling for efficient resource usage
+   - Prepared statements for performance and security
+   - Transaction management for data integrity
+
+3. **Error Communication**
+   - Structured error responses with codes and messages
+   - Appropriate HTTP status codes
+   - Internationalized error messages
+
+---
+
+## 3. Database Schema
+
+### 3.1 Entity Relationship Diagram
+```
++---------------+       +---------------+       +---------------+
+| Vehicles      |       | Rentals       |       | Customers     |
++---------------+       +---------------+       +---------------+
+| PK id         |<----->| PK id         |<----->| PK id         |
+| plate_number  |       | FK vehicle_id |       | first_name    |
+| type          |       | FK customer_id|       | last_name     |
+| make          |       | start_date    |       | phone         |
+| model         |       | end_date      |       | email         |
+| year          |       | status        |       | nationality   |
+| color         |       | total_amount  |       | id_type       |
+| status        |       | paid_amount   |       | id_number     |
+| daily_rate    |       | deposit       |       | license_number|
+| deposit_amount|       | return_date   |       | created_at    |
+| seats         |       | created_at    |       | updated_at    |
+| last_service  |       | updated_at    |       +---------------+
+| next_service  |       +---------------+              |
+| created_at    |              |                       |
+| updated_at    |              |                       |
++---------------+              |                       |
+      |                        |                       |
+      |                +---------------+       +---------------+
+      |                | Payments      |       | Documents     |
+      |                +---------------+       +---------------+
+      |                | PK id         |       | PK id         |
+      |                | FK rental_id  |       | owner_type    |
+      |                | amount        |       | FK owner_id   |
+      |                | payment_date  |       | type          |
+      |                | payment_type  |       | file_path     |
+      |                | receipt_number|       | upload_date   |
+      |                | notes         |       | expiry_date   |
+      |                | created_at    |       | created_at    |
+      |                | updated_at    |       | updated_at    |
+      |                +---------------+       +---------------+
+      |                                                |
+      |                                                |
++---------------+                               +---------------+
+| Maintenance   |                               | Users         |
++---------------+                               +---------------+
+| PK id         |                               | PK id         |
+| FK vehicle_id |                               | username      |
+| service_date  |                               | password_hash |
+| service_type  |                               | first_name    |
+| cost          |                               | last_name     |
+| odometer      |                               | role          |
+| details       |                               | active        |
+| completed     |                               | last_login    |
+| created_at    |                               | created_at    |
+| updated_at    |                               | updated_at    |
++---------------+                               +---------------+
+```
+
+### 3.2 Tables Definition
+
+#### 3.2.1 Vehicles Table
+
+```sql
+CREATE TABLE vehicles (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    plate_number VARCHAR(20) NOT NULL UNIQUE,
+    type VARCHAR(20) NOT NULL CHECK (type IN ('car', 'bus', 'van', 'truck')),
+    make VARCHAR(50) NOT NULL,
+    model VARCHAR(50) NOT NULL,
+    year INTEGER NOT NULL CHECK (year >= 2000 AND year <= EXTRACT(YEAR FROM CURRENT_DATE) + 1),
+    color VARCHAR(30) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'available' 
+        CHECK (status IN ('available', 'rented', 'maintenance', 'out_of_service')),
+    daily_rate DECIMAL(10, 2) NOT NULL CHECK (daily_rate >= 0),
+    deposit_amount DECIMAL(10, 2) NOT NULL CHECK (deposit_amount >= 0),
+    seats INTEGER CHECK (seats > 0),
+    mileage INTEGER NOT NULL DEFAULT 0 CHECK (mileage >= 0),
+    last_service DATE,
+    next_service DATE,
+    notes TEXT,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_vehicles_status ON vehicles(status);
+CREATE INDEX idx_vehicles_type ON vehicles(type);
+```
+
+#### 3.2.2 Customers Table
+
+```sql
+CREATE TABLE customers (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    first_name VARCHAR(50) NOT NULL,
+    last_name VARCHAR(50) NOT NULL,
+    phone VARCHAR(20) NOT NULL,
+    email VARCHAR(100),
+    nationality VARCHAR(50) NOT NULL,
+    id_type VARCHAR(20) NOT NULL CHECK (id_type IN ('passport', 'national_id', 'residence')),
+    id_number VARCHAR(50) NOT NULL,
+    license_number VARCHAR(50) NOT NULL,
+    license_expiry DATE NOT NULL,
+    address TEXT,
+    city VARCHAR(50),
+    blacklisted BOOLEAN NOT NULL DEFAULT FALSE,
+    blacklist_reason TEXT,
+    notes TEXT,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (id_type, id_number)
+);
+
+CREATE INDEX idx_customers_phone ON customers(phone);
+CREATE INDEX idx_customers_email ON customers(email);
+CREATE INDEX idx_customers_license ON customers(license_number);
+```
+
+#### 3.2.3 Rentals Table
+
+```sql
+CREATE TABLE rentals (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    vehicle_id UUID NOT NULL REFERENCES vehicles(id),
+    customer_id UUID NOT NULL REFERENCES customers(id),
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL CHECK (end_date >= start_date),
+    status VARCHAR(20) NOT NULL DEFAULT 'active' 
+        CHECK (status IN ('active', 'completed', 'extended', 'cancelled', 'overdue')),
+    contract_number VARCHAR(20) NOT NULL UNIQUE,
+    pickup_location VARCHAR(100) NOT NULL,
+    return_location VARCHAR(100) NOT NULL,
+    initial_mileage INTEGER NOT NULL CHECK (initial_mileage >= 0),
+    return_mileage INTEGER CHECK (return_mileage IS NULL OR return_mileage >= initial_mileage),
+    daily_rate DECIMAL(10, 2) NOT NULL CHECK (daily_rate >= 0),
+    total_days INTEGER NOT NULL CHECK (total_days > 0),
+    subtotal DECIMAL(10, 2) NOT NULL CHECK (subtotal >= 0),
+    tax_amount DECIMAL(10, 2) NOT NULL CHECK (tax_amount >= 0),
+    total_amount DECIMAL(10, 2) NOT NULL CHECK (total_amount >= 0),
+    deposit DECIMAL(10, 2) NOT NULL CHECK (deposit >= 0),
+    deposit_returned DECIMAL(10, 2) CHECK (deposit_returned IS NULL OR deposit_returned >= 0),
+    paid_amount DECIMAL(10, 2) NOT NULL DEFAULT 0 CHECK (paid_amount >= 0),
+    balance DECIMAL(10, 2) NOT NULL CHECK (balance >= 0),
+    return_date DATE,
+    notes TEXT,
+    created_by UUID NOT NULL REFERENCES users(id),
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_rentals_vehicle_id ON rentals(vehicle_id);
+CREATE INDEX idx_rentals_customer_id ON rentals(customer_id);
+CREATE INDEX idx_rentals_status ON rentals(status);
+CREATE INDEX idx_rentals_date_range ON rentals(start_date, end_date);
+```
+
+#### 3.2.4 Payments Table
+
+```sql
+CREATE TABLE payments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    rental_id UUID NOT NULL REFERENCES rentals(id),
+    amount DECIMAL(10, 2) NOT NULL CHECK (amount > 0),
+    payment_date DATE NOT NULL,
+    payment_type VARCHAR(20) NOT NULL DEFAULT 'cash' CHECK (payment_type = 'cash'),
+    receipt_number VARCHAR(50) NOT NULL UNIQUE,
+    payment_purpose VARCHAR(30) NOT NULL 
+        CHECK (payment_purpose IN ('rental', 'deposit', 'deposit_return', 'damage', 'late_fee', 'other')),
+    received_by UUID NOT NULL REFERENCES users(id),
+    notes TEXT,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_payments_rental_id ON payments(rental_id);
+CREATE INDEX idx_payments_date ON payments(payment_date);
+```
+
+#### 3.2.5 Documents Table
+
+```sql
+CREATE TABLE documents (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    owner_type VARCHAR(20) NOT NULL CHECK (owner_type IN ('vehicle', 'customer', 'rental', 'maintenance')),
+    owner_id UUID NOT NULL,
+    type VARCHAR(50) NOT NULL,
+    file_name VARCHAR(255) NOT NULL,
+    file_path VARCHAR(255) NOT NULL,
+    file_size INTEGER NOT NULL,
+    mime_type VARCHAR(100) NOT NULL,
+    upload_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    expiry_date DATE,
+    description TEXT,
+    uploaded_by UUID NOT NULL REFERENCES users(id),
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (owner_type, owner_id, type)
+);
+
+CREATE INDEX idx_documents_owner ON documents(owner_type, owner_id);
+CREATE INDEX idx_documents_type ON documents(type);
+```
+
+#### 3.2.6 Maintenance Table
+
+```sql
+CREATE TABLE maintenance (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    vehicle_id UUID NOT NULL REFERENCES vehicles(id),
+    service_date DATE NOT NULL,
+    service_type VARCHAR(50) NOT NULL,
+    cost DECIMAL(10, 2) NOT NULL CHECK (cost >= 0),
+    odometer INTEGER CHECK (odometer >= 0),
+    workshop VARCHAR(100),
+    invoice_number VARCHAR(50),
+    details TEXT,
+    completed BOOLEAN NOT NULL DEFAULT FALSE,
+    completion_date DATE,
+    created_by UUID NOT NULL REFERENCES users(id),
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_maintenance_vehicle_id ON maintenance(vehicle_id);
+CREATE INDEX idx_maintenance_service_date ON maintenance(service_date);
+CREATE INDEX idx_maintenance_completed ON maintenance(completed);
+```
+
+#### 3.2.7 Users Table
+
+```sql
+CREATE TABLE users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    username VARCHAR(50) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    first_name VARCHAR(50) NOT NULL,
+    last_name VARCHAR(50) NOT NULL,
+    role VARCHAR(20) NOT NULL CHECK (role IN ('admin', 'sales')),
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    email VARCHAR(100),
+    phone VARCHAR(20),
+    last_login TIMESTAMP WITH TIME ZONE,
+    language_preference VARCHAR(10) NOT NULL DEFAULT 'en' CHECK (language_preference IN ('en', 'ar')),
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_users_role ON users(role);
+CREATE INDEX idx_users_active ON users(active);
+```
+
+#### 3.2.8 System Settings Table
+
+```sql
+CREATE TABLE system_settings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    setting_key VARCHAR(50) NOT NULL UNIQUE,
+    setting_value TEXT NOT NULL,
+    description TEXT,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+#### 3.2.9 Audit Log Table
+
+```sql
+CREATE TABLE audit_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id),
+    action VARCHAR(50) NOT NULL,
+    entity_type VARCHAR(50) NOT NULL,
+    entity_id UUID,
+    details JSONB,
+    ip_address VARCHAR(45),
+    timestamp TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_audit_logs_user ON audit_logs(user_id);
+CREATE INDEX idx_audit_logs_action ON audit_logs(action);
+CREATE INDEX idx_audit_logs_timestamp ON audit_logs(timestamp);
+```
+
+### 3.3 Constraints and Relationships
+
+1. **Foreign Key Constraints**
+   - rentals.vehicle_id → vehicles.id
+   - rentals.customer_id → customers.id
+   - payments.rental_id → rentals.id
+   - maintenance.vehicle_id → vehicles.id
+   - documents reference various tables through owner_type and owner_id
+
+2. **Check Constraints**
+   - Dates: end_date >= start_date, etc.
+   - Numeric values: amounts >= 0, etc.
+   - Enumerations: status values limited to specific sets
+
+3. **Unique Constraints**
+   - vehicles.plate_number
+   - rentals.contract_number
+   - payments.receipt_number
+   - users.username
+   - customers: combination of id_type and id_number
+
+4. **Indexes**
+   - Primary keys
+   - Foreign key columns
+   - Frequently queried columns
+   - Date ranges for reports
+
+---
+
+## 4. User Roles and Permissions
+
+### 4.1 Role Definitions
+
+#### 4.1.1 Administrator Role
+
+**Description**: System administrators have full access to all system features, including user management and system configuration.
+
+**Permissions**:
+- User Management: Create, read, update, and delete user accounts
+- System Configuration: Modify system settings and preferences
+- Full access to all modules and features
+- Access to audit logs and system reports
+- Vehicle fleet management including adding and removing vehicles
+- Financial reporting and record adjustments
+- Customer blacklisting and record management
+- Database maintenance operations
+
+**Acceptance Criteria**:
+- Administrator can create new user accounts of any role
+- Administrator can access all system modules without restriction
+- Administrator can modify system configuration settings
+- Administrator can view audit logs and track user activities
+- Administrator can export and reset data in the system
+
+#### 4.1.2 Sales Employee Role
+
+**Description**: Sales employees manage day-to-day rental operations including customer interactions, vehicle rentals, and payment processing.
+
+**Permissions**:
+- Customer Management: Create, read, and update customer records
+- Vehicle Management: View vehicle availability and details
+- Rental Processing: Create, read, update rental agreements
+- Payment Handling: Record payments and issue receipts
+- Document Management: Upload and view customer and vehicle documents
+- Basic Reporting: Access operational reports
+
+**Restrictions**:
+- Cannot delete records (only mark as inactive or cancelled)
+- Cannot modify system settings
+- Cannot access user management
+- Cannot access financial adjustment features
+- Cannot blacklist customers (can only flag for review)
+- Cannot alter vehicle fleet information (only status updates)
+
+**Acceptance Criteria**:
+- Sales employee can register new customers
+- Sales employee can process rental agreements
+- Sales employee can record payments
+- Sales employee can view available vehicles
+- Sales employee cannot access administrative functions
+- Sales employee cannot delete permanent records
+
+### 4.2 Permission Matrix
+
+| Feature/Action                     | Administrator | Sales Employee |
+|------------------------------------|---------------|----------------|
+| **User Management**                |               |                |
+| Create users                       | Yes           | No             |
+| View users                         | Yes           | No             |
+| Edit users                         | Yes           | No             |
+| Deactivate users                   | Yes           | No             |
+| Reset user passwords               | Yes           | No             |
+| **Vehicle Management**             |               |                |
+| Add vehicles                       | Yes           | No             |
+| View vehicles                      | Yes           | Yes            |
+| Edit vehicle details               | Yes           | No             |
+| Update vehicle status              | Yes           | Yes (Limited)  |
+| Remove vehicles                    | Yes           | No             |
+| **Customer Management**            |               |                |
+| Register customers                 | Yes           | Yes            |
+| View customer details              | Yes           | Yes            |
+| Edit customer information          | Yes           | Yes            |
+| Blacklist customers                | Yes           | No             |
+| Delete customer records            | Yes           | No             |
+| **Rental Processing**              |               |                |
+| Create rental agreements           | Yes           | Yes            |
+| View rental details                | Yes           | Yes            |
+| Modify rental terms                | Yes           | Yes (Active)   |
+| Cancel rentals                     | Yes           | Yes (Same day) |
+| Complete rental process            | Yes           | Yes            |
+| **Payment Handling**               |               |                |
+| Record payments                    | Yes           | Yes            |
+| Issue receipts                     | Yes           | Yes            |
+| Process refunds                    | Yes           | No             |
+| Adjust payment records             | Yes           | No             |
+| **Document Management**            |               |                |
+| Upload documents                   | Yes           | Yes            |
+| View documents                     | Yes           | Yes            |
+| Delete documents                   | Yes           | No             |
+| **Reporting**                      |               |                |
+| Generate operational reports       | Yes           | Yes (Limited)  |
+| Access financial reports           | Yes           | No             |
+| Export data                        | Yes           | Limited        |
+| View audit trails                  | Yes           | No             |
+| **System Configuration**           |               |                |
+| Modify system settings             | Yes           | No             |
+| Backup/restore data                | Yes           | No             |
+| Configure default values           | Yes           | No             |
+| **Maintenance Tracking**           |               |                |
+| Schedule maintenance               | Yes           | No             |
+| Update maintenance records         | Yes           | No             |
+| View maintenance history           | Yes           | Yes            |
+
+### 4.3 Authentication and Authorization Implementation
+
+#### 4.3.1 Authentication Process
+1. Username and password-based login
+2. Password policy enforcement:
+   - Minimum 8 characters
+   - Must include at least one uppercase letter, one lowercase letter, one number, and one special character
+   - Must be changed every 90 days
+   - Cannot reuse the last 5 passwords
+3. JWT (JSON Web Token) issued upon successful authentication
+4. Token expiration after 8 hours of inactivity
+5. Token refresh mechanism for continuous usage
+
+#### 4.3.2 Authorization Process
+1. Role-based access control based on the user's assigned role
+2. Permission checks at both API level and UI level
+3. Context-aware permissions (e.g., only allowing edits on active rentals)
+4. Audit logging of all sensitive operations
+5. IP-based access restrictions for additional security
+
+#### 4.3.3 User Session Management
+1. Automatic logout after 30 minutes of inactivity
+2. Single session per user enforcement (optional)
+3. Session details visible to user (login time, IP address)
+4. Ability to terminate all sessions (admin feature)
+
+---
+
+## 5. Module Specifications
+
+### 5.1 Vehicle Management Module
+
+#### 5.1.1 Features
+
+1. **Vehicle Registration**
+   - Add new vehicles with detailed specifications
+   - Upload vehicle documents (registration, insurance, etc.)
+   - Assign unique identifiers and track vehicle metadata
+
+2. **Vehicle Inventory Management**
+   - Track vehicle status (available, rented, maintenance, out of service)
+   - Search and filter vehicles by various criteria
+   - View vehicle rental history and availability calendar
+
+3. **Maintenance Scheduling**
+   - Schedule routine maintenance based on time or mileage
+   - Record maintenance history and costs
+   - Generate maintenance alerts and notifications
+
+4. **Vehicle Documentation**
+   - Store and manage vehicle registration documents
+   - Track document expiration dates
+   - Generate renewal alerts for expiring documents
+
+#### 5.1.2 Functional Requirements
+
+1. **FR-VM-01: Vehicle Registration**
+   - The system shall allow administrators to add new vehicles with all required details.
+   - The system shall validate vehicle information and prevent duplicate entries.
+   - The system shall support uploading vehicle images and documents.
+   
+   **Acceptance Criteria**:
+   - Administrator can successfully add a new vehicle with all required details.
+   - System prevents duplicate plate number entries.
+   - Vehicle status is correctly set to "available" upon registration.
+   - Vehicle registration documents can be uploaded and associated with the vehicle.
+
+2. **FR-VM-02: Vehicle Search and Filtering**
+   - The system shall provide search and filtering capabilities for vehicles.
+   - The system shall display vehicle availability status in real-time.
+   - The system shall allow filtering by vehicle type, make, model, status, and more.
+   
+   **Acceptance Criteria**:
+   - Users can search for vehicles by plate number, make, or model.
+   - Users can filter vehicles by type, status, and availability.
+   - Search results update in real-time as filters are applied.
+   - Vehicle availability status is accurately reflected.
+
+3. **FR-VM-03: Maintenance Tracking**
+   - The system shall track vehicle maintenance schedules and history.
+   - The system shall generate alerts for upcoming maintenance tasks.
+   - The system shall allow recording of maintenance costs and details.
+   
+   **Acceptance Criteria**:
+   - System correctly tracks maintenance schedules.
+   - Alerts are generated when maintenance is due.
+   - Maintenance records are properly associated with vehicles.
+   - Maintenance costs are accurately recorded and reportable.
+
+4. **FR-VM-04: Vehicle Status Management**
+   - The system shall automatically update vehicle status based on rental and maintenance activities.
+   - The system shall prevent rental of vehicles with "maintenance" or "out of service" status.
+   - The system shall provide a vehicle availability calendar.
+   
+   **Acceptance Criteria**:
+   - Vehicle status automatically changes to "rented" when a rental agreement is created.
+   - Vehicle status automatically changes to "available" when a rental is completed.
+   - Users cannot rent vehicles marked as in maintenance or out of service.
+   - Vehicle availability calendar accurately shows rental periods.
+
+#### 5.1.3 Data Requirements
+
+1. Vehicle details (make, model, year, color, plate number, etc.)
+2. Vehicle specifications (engine, transmission, fuel type, etc.)
+3. Vehicle documents (registration, insurance, permits)
+4. Maintenance records and schedules
+5. Vehicle availability calendar
+6. Rental history and statistics
+
+### 5.2 Customer Management Module
+
+#### 5.2.1 Features
+
+1. **Customer Registration**
+   - Register new customers with personal and identification details
+   - Verify customer documentation (ID, driving license)
+   - Record customer preferences and history
+
+2. **Customer Documentation**
+   - Upload and store customer identification documents
+   - Track document validity and expiration dates
+   - Generate alerts for expiring documents
+
+3. **Customer History**
+   - Track rental history and patterns
+   - Record customer notes and preferences
+   - Maintain blacklist and customer status
+
+4. **Customer Search and Retrieval**
+   - Search customers by various criteria
+   - Quick lookup by ID or phone number
+   - View comprehensive customer profiles
+
+#### 5.2.2 Functional Requirements
+
+1. **FR-CM-01: Customer Registration**
+   - The system shall allow registration of new customers with all required information.
+   - The system shall validate customer data including ID and license details.
+   - The system shall support uploading customer identification documents.
+   
+   **Acceptance Criteria**:
+   - Users can successfully register new customers with all required details.
+   - System validates ID number and prevents duplicate entries.
+   - Customer identification documents can be uploaded and associated with the customer.
+   - System correctly identifies and flags invalid or expired documents.
+
+2. **FR-CM-02: Customer Search and Retrieval**
+   - The system shall provide search capabilities for customer records.
+   - The system shall allow quick retrieval of customer information by ID or phone.
+   - The system shall display comprehensive customer profiles including rental history.
+   
+   **Acceptance Criteria**:
+   - Users can search for customers by name, ID number, or phone.
+   - Customer profiles display all relevant information.
+   - Rental history is accurately associated with customer profiles.
+   - Customer search returns results within 2 seconds.
+
+3. **FR-CM-03: Customer Documentation Management**
+   - The system shall track customer document expiration dates.
+   - The system shall generate alerts for expiring documents.
+   - The system shall maintain document history and versions.
+   
+   **Acceptance Criteria**:
+   - System correctly tracks document expiration dates.
+   - Alerts are generated when documents are nearing expiration.
+   - Document history is properly maintained and accessible.
+   - Documents can be viewed, downloaded, and printed.
+
+4. **FR-CM-04: Blacklist Management**
+   - The system shall allow administrators to blacklist customers with reasons.
+   - The system shall prevent renting to blacklisted customers.
+   - The system shall maintain blacklist history and audit trail.
+   
+   **Acceptance Criteria**:
+   - Administrators can blacklist customers with documented reasons.
+   - System prevents rental to blacklisted customers.
+   - Blacklist history and audit trail are properly maintained.
+   - Blacklist status is prominently displayed in customer profiles.
+
+#### 5.2.3 Data Requirements
+
+1. Customer personal details (name, contact information, address)
+2. Customer identification details (ID type, number, expiration)
+3. Driving license information (number, expiration, issuing authority)
+4. Customer documents (ID scan, license scan, visa/residence)
+5. Rental history and preferences
+6. Blacklist status and reason (if applicable)
+
+### 5.3 Rental Processing Module
+
+#### 5.3.1 Features
+
+1. **Rental Agreement Creation**
+   - Create new rental agreements with customer and vehicle selection
+   - Define rental terms (dates, rates, conditions)
+   - Calculate costs and collect deposits
+   - Generate rental contract and documentation
+
+2. **Rental Management**
+   - Track active rentals and status
+   - Process rental extensions and modifications
+   - Handle vehicle returns and inspections
+   - Calculate final charges and refunds
+
+3. **Contract Generation**
+   - Generate legally compliant rental contracts
+   - Support bilingual contract templates
+   - Include terms and conditions
+   - Enable contract printing and digital storage
+
+4. **Rental Scheduling**
+   - Visualize vehicle availability calendar
+   - Manage reservations and bookings
+   - Prevent double-booking of vehicles
+
+#### 5.3.2 Functional Requirements
+
+1. **FR-RP-01: Rental Agreement Creation**
+   - The system shall allow creation of rental agreements with customer and vehicle selection.
+   - The system shall calculate rental costs based on vehicle type and duration.
+   - The system shall generate rental contracts in both Arabic and English.
+   - The system shall record deposit amounts and initial vehicle condition.
+   
+   **Acceptance Criteria**:
+   - Users can create new rental agreements with all required details.
+   - System correctly calculates rental costs, taxes, and total amount.
+   - Rental contracts are generated in both Arabic and English.
+   - Deposit amounts are recorded and receipts are generated.
+
+2. **FR-RP-02: Rental Management**
+   - The system shall track active rentals and display their status.
+   - The system shall allow rental extensions and modifications.
+   - The system shall support early return processing.
+   - The system shall track rental status changes with audit trails.
+   
+   **Acceptance Criteria**:
+   - System displays active rentals with current status.
+   - Users can extend rental durations with updated costs.
+   - Early returns are processed with appropriate adjustments.
+   - Rental status changes are tracked with timestamps and user details.
+
+3. **FR-RP-03: Vehicle Return Process**
+   - The system shall support vehicle return processing.
+   - The system shall allow recording of return condition and mileage.
+   - The system shall calculate final charges including any additional fees.
+   - The system shall process deposit returns.
+   
+   **Acceptance Criteria**:
+   - Users can process vehicle returns with condition assessment.
+   - System calculates correct final charges based on actual usage.
+   - Additional fees can be added if necessary (damage, late return).
+   - Deposit return calculations are accurate and receipts are generated.
+
+4. **FR-RP-04: Rental Calendar and Availability**
+   - The system shall display vehicle availability on a calendar.
+   - The system shall prevent double-booking of vehicles.
+   - The system shall allow reservation management.
+   - The system shall provide availability search by vehicle type and date range.
+   
+   **Acceptance Criteria**:
+   - Availability calendar displays correct rental periods.
+   - System prevents double-booking of vehicles.
+   - Users can search for available vehicles by date range and type.
+   - Reservations are properly managed and reflected in the calendar.
+
+#### 5.3.3 Data Requirements
+
+1. Rental agreement details (customer, vehicle, dates, rates)
+2. Contract terms and conditions
+3. Deposit and payment information
+4. Vehicle condition (before and after rental)
+5. Mileage readings (start and end)
+6. Additional charges and fees
+7. Return status and inspection results
+
+### 5.4 Payment Handling Module
+
+#### 5.4.1 Features
+
+1. **Cash Payment Processing**
+   - Record cash payments with receipt generation
+   - Track partial payments and balances
+   - Handle deposits and refunds
+   - Maintain payment history
+
+2. **Receipt Generation**
+   - Generate numbered receipts for all transactions
+   - Support bilingual receipts (Arabic and English)
+   - Print and digitally store receipts
+   - Generate duplicate receipts when needed
+
+3. **Financial Reporting**
+   - Track daily cash collections
+   - Generate revenue reports by vehicle, customer, or period
+   - Export financial data for accounting purposes
+
+4. **Balance Management**
+   - Track outstanding balances
+   - Calculate rental completion balances
+   - Manage deposit returns and deductions
+
+#### 5.4.2 Functional Requirements
+
+1. **FR-PH-01: Cash Payment Recording**
+   - The system shall allow recording of cash payments with receipt generation.
+   - The system shall track partial payments and outstanding balances.
+   - The system shall support payment categorization (rental, deposit, etc.).
+   - The system shall maintain a complete payment history.
+   
+   **Acceptance Criteria**:
+   - Users can record cash payments with date, amount, and purpose.
+   - System generates numbered receipts for all payments.
+   - Partial payments update the outstanding balance correctly.
+   - Payment history is accurately maintained and viewable.
+
+2. **FR-PH-02: Receipt Generation**
+   - The system shall generate numbered receipts for all financial transactions.
+   - The system shall support bilingual receipts in Arabic and English.
+   - The system shall enable printing and digital storage of receipts.
+   - The system shall allow generation of duplicate receipts with marking.
+   
+   **Acceptance Criteria**:
+   - Numbered receipts are generated for all transactions.
+   - Receipts are available in both Arabic and English.
+   - Receipts can be printed and are digitally stored.
+   - Duplicate receipts can be generated with appropriate marking.
+
+3. **FR-PH-03: Financial Reporting**
+   - The system shall generate daily cash collection reports.
+   - The system shall provide revenue reports by various criteria.
+   - The system shall support financial data export.
+   - The system shall calculate revenue statistics.
+   
+   **Acceptance Criteria**:
+   - Daily cash collection reports are accurate and complete.
+   - Revenue reports can be filtered by vehicle, customer, or date range.
+   - Financial data can be exported in standard formats.
+   - Revenue statistics are calculated correctly.
+
+4. **FR-PH-04: Deposit Management**
+   - The system shall record and track security deposits.
+   - The system shall calculate deposit refunds based on rental completion.
+   - The system shall support partial deposit withholding with reasons.
+   - The system shall generate deposit return receipts.
+   
+   **Acceptance Criteria**:
+   - Security deposits are recorded separately from rental payments.
+   - Deposit refunds are calculated correctly upon rental completion.
+   - Partial deposit withholding is supported with documented reasons.
+   - Deposit return receipts are generated and stored.
+
+#### 5.4.3 Data Requirements
+
+1. Payment records (date, amount, purpose, receipt number)
+2. Receipt details and numbering
+3. Payment categorization (rental, deposit, refund, etc.)
+4. Daily cash collection totals
+5. Outstanding balances and payment schedules
+6. Deposit tracking and refund calculations
+
+### 5.5 Maintenance Tracking Module
+
+#### 5.5.1 Features
+
+1. **Maintenance Scheduling**
+   - Schedule routine maintenance based on time or mileage
+   - Generate maintenance alerts and notifications
+   - Track maintenance due dates and overdue tasks
+
+2. **Service Recording**
+   - Record maintenance services performed
+   - Track costs and details of each service
+   - Maintain service history with documents
+
+3. **Maintenance Reporting**
+   - Generate maintenance reports by vehicle or type
+   - Calculate maintenance costs and statistics
+   - Analyze maintenance patterns and trends
+
+4. **Service Provider Management**
+   - Maintain list of service providers and workshops
+   - Track service quality and reliability
+   - Record contact information and service types
+
+#### 5.5.2 Functional Requirements
+
+1. **FR-MT-01: Maintenance Scheduling**
+   - The system shall allow scheduling of routine maintenance tasks.
+   - The system shall generate alerts for upcoming maintenance.
+   - The system shall support scheduling based on time or mileage thresholds.
+   - The system shall track maintenance compliance.
+   
+   **Acceptance Criteria**:
+   - Maintenance tasks can be scheduled with due dates.
+   - Alerts are generated when maintenance is due.
+   - Both time-based and mileage-based scheduling is supported.
+   - Maintenance compliance status is accurately tracked.
+
+2. **FR-MT-02: Service Recording**
+   - The system shall allow recording of maintenance services performed.
+   - The system shall track costs and details of each service.
+   - The system shall support uploading of service documentation.
+   - The system shall maintain complete service history by vehicle.
+   
+   **Acceptance Criteria**:
+   - Maintenance services can be recorded with all required details.
+   - Service costs are accurately tracked and reported.
+   - Service documentation can be uploaded and associated.
+   - Complete service history is maintained and viewable.
+
+3. **FR-MT-03: Maintenance Reporting**
+   - The system shall generate maintenance reports by various criteria.
+   - The system shall calculate maintenance costs and statistics.
+   - The system shall support maintenance data export.
+   - The system shall provide maintenance analysis.
+   
+   **Acceptance Criteria**:
+   - Maintenance reports can be generated by vehicle or type.
+   - Maintenance costs are calculated correctly.
+   - Maintenance data can be exported in standard formats.
+   - Maintenance patterns can be analyzed and visualized.
+
+4. **FR-MT-04: Vehicle Status Management**
+   - The system shall update vehicle status during maintenance periods.
+   - The system shall prevent rental of vehicles under maintenance.
+   - The system shall track maintenance duration.
+   - The system shall restore vehicle status upon maintenance completion.
+   
+   **Acceptance Criteria**:
+   - Vehicle status changes to "maintenance" when service begins.
+   - System prevents rental of vehicles under maintenance.
+   - Maintenance duration is tracked accurately.
+   - Vehicle status is restored to "available" upon maintenance completion.
+
+#### 5.5.3 Data Requirements
+
+1. Maintenance schedule details
+2. Service records and history
+3. Maintenance costs and invoices
+4. Service provider information
+5. Maintenance documentation and invoices
+6. Maintenance compliance status
+7. Service types and categories
+
+### 5.6 Reporting Module
+
+#### 5.6.1 Features
+
+1. **Operational Reports**
+   - Active rentals report
+   - Vehicle availability report
+   - Upcoming returns report
+   - Maintenance schedule report
+
+2. **Financial Reports**
+   - Revenue reports by period, vehicle, or customer
+   - Payment collection reports
+   - Outstanding balance reports
+   - Deposit status reports
+
+3. **Management Reports**
+   - Fleet utilization reports
+   - Customer statistics reports
+   - Maintenance cost reports
+   - Performance analysis reports
+
+4. **Custom Reports**
+   - Customizable report templates
+   - Report filtering and parameters
+   - Export capabilities (PDF, Excel)
+   - Scheduled report generation
+
+#### 5.6.2 Functional Requirements
+
+1. **FR-RP-01: Standard Reports Generation**
+   - The system shall provide a set of standard operational reports.
+   - The system shall allow filtering reports by date range and other criteria.
+   - The system shall generate reports in both Arabic and English.
+   - The system shall support exporting reports in multiple formats.
+   
+   **Acceptance Criteria**:
+   - Standard reports are available and accurate.
+   - Reports can be filtered by relevant criteria.
+   - Reports are available in both Arabic and English.
+   - Reports can be exported in PDF and Excel formats.
+
+2. **FR-RP-02: Financial Reporting**
+   - The system shall generate financial reports for various periods.
+   - The system shall calculate revenue statistics and trends.
+   - The system shall track payment collections and outstanding balances.
+   - The system shall support detailed financial analysis.
+   
+   **Acceptance Criteria**:
+   - Financial reports show accurate revenue figures.
+   - Revenue statistics are calculated correctly.
+   - Payment collection reports match actual receipts.
+   - Financial analysis provides meaningful insights.
+
+3. **FR-RP-03: Management Reporting**
+   - The system shall generate management-level reports.
+   - The system shall calculate fleet utilization metrics.
+   - The system shall provide customer statistics and patterns.
+   - The system shall support data visualization.
+   
+   **Acceptance Criteria**:
+   - Management reports provide high-level overview.
+   - Fleet utilization metrics are accurate.
+   - Customer statistics show meaningful patterns.
+   - Data visualization enhances report readability.
+
+4. **FR-RP-04: Custom Reporting**
+   - The system shall allow creation of custom report templates.
+   - The system shall support parameter-based reporting.
+   - The system shall enable scheduled report generation.
+   - The system shall maintain report history.
+   
+   **Acceptance Criteria**:
+   - Custom report templates can be created and saved.
+   - Parameter-based filters work correctly.
+   - Scheduled reports are generated on time.
+   - Report history is maintained for future reference.
+
+#### 5.6.3 Data Requirements
+
+1. Rental operations data
+2. Vehicle utilization statistics
+3. Financial transaction records
+4. Maintenance and cost data
+5. Customer rental patterns
+6. Performance metrics and KPIs
+7. Report templates and parameters
+
+---
+
+## 6. UAE Compliance Requirements
+
+### 6.1 Vehicle Rental Documentation
+
+#### 6.1.1 Required Documents for Vehicles
+1. **Vehicle Registration Card**
+   - UAE Traffic Authority issued registration
+   - Must be current and valid
+   - Physical document must be kept in vehicle
+   - Digital copy stored in system
+
+2. **Vehicle Insurance Certificate**
+   - Comprehensive insurance with rental coverage
+   - Must cover the entire rental fleet
+   - Must be current and valid
+   - Digital copy stored in system
+
+3. **Vehicle Testing Certificate**
+   - Annual technical inspection certificate
+   - Required for vehicles older than 3 years
+   - Must be renewed annually
+   - Digital copy stored in system
+
+4. **Commercial Transport Permit**
+   - Required for buses and commercial vehicles
+   - Issued by Roads and Transport Authority (RTA)
+   - Must specify passenger or goods transport
+   - Digital copy stored in system
+
+#### 6.1.2 Required Documents for Customers
+1. **Identification Requirements**
+   - UAE Nationals: Emirates ID or passport
+   - UAE Residents: Emirates ID and residence visa
+   - Visitors: Passport with valid visit visa
+   - Digital copies stored in system
+
+2. **Driving License Requirements**
+   - UAE Nationals/Residents: Valid UAE driving license
+   - Visitors: Valid international driving license or license from GCC countries
+   - License must be appropriate for vehicle class
+   - Digital copy stored in system
+
+3. **Contact and Address Information**
+   - Local UAE address (hotel address acceptable for visitors)
+   - Local phone number
+   - Email address
+   - Emergency contact
+
+#### 6.1.3 Rental Agreement Requirements
+1. **Contract Compliance**
+   - Must be in both Arabic and English
+   - Must include standard terms and conditions
+   - Must specify complete rental terms
+   - Must be signed by both parties
+   - Digitally stored with rental record
+
+2. **Terms and Conditions**
+   - Insurance coverage and liability
+   - Damage responsibility
+   - Traffic violations responsibility
+   - Return conditions and penalties
+   - UAE legal jurisdiction clause
+
+3. **Fees and Deposits**
+   - Clear breakdown of rental fees
+   - Security deposit amount and terms
+   - Additional charges explanation
+   - Payment methods accepted
+
+### 6.2 Document Retention Requirements
+
+#### 6.2.1 Retention Periods
+1. **Rental Agreements**: Minimum 5 years
+2. **Customer Identification**: 3 years after last rental
+3. **Payment Records**: 7 years
+4. **Vehicle Documents**: Duration of ownership plus 2 years
+5. **Accident Reports**: 10 years
+
+#### 6.2.2 Document Access Controls
+1. **Restricted Access**: Based on user role
+2. **Document Encryption**: For sensitive customer data
+3. **Access Logs**: Recording document access
+
+### 6.3 Regulatory Reporting
+
+#### 6.3.1 Required Reports
+1. **Vehicle Fleet Reports**: Annual reports to RTA
+2. **Commercial Transport Reports**: Quarterly for buses
+3. **Accident Reports**: As they occur
+
+#### 6.3.2 Customer Verification
+1. **Identity Verification Process**
+   - Physical document inspection
+   - Document validity check
+   - Photograph comparison
+
+2. **Visitor Special Requirements**
+   - Passport visa page copy
+   - Hotel address confirmation
+   - Home country contact information
+
+### 6.4 Data Protection and Privacy
+
+#### 6.4.1 Customer Data Protection
+1. **Personal Data Handling**
+   - Explicit consent for data collection
+   - Secure storage of personal information
+   - Limited access to authorized personnel only
+
+2. **Data Retention Policy**
+   - Personal data retained only as required by law
+   - Data purging schedule for old records
+   - Customer right to request data deletion
+
+#### 6.4.2 System Compliance Features
+1. **Document Verification**
+   - Document expiration tracking
+   - Automatic alerts for expiring documents
+   - Verification status tracking
+
+2. **Contract Generation**
+   - Bilingual contract templates
+   - UAE-compliant terms and conditions
+   - Digital and printed contract options
+
+---
+
+## 7. Cash-Only Payment Processing
+
+### 7.1 Cash Payment Workflow
+
+#### 7.1.1 Payment Collection Process
+1. **Initial Rental Payment**
+   - Customer pays initial rental amount plus deposit
+   - Employee counts cash and confirms amount
+   - System records payment and categorizes (rental, deposit)
+   - System generates receipt with unique number
+   - Receipt printed in duplicate (customer copy, office copy)
+
+2. **Additional Payments**
+   - For rental extensions or additional charges
+   - Employee enters payment details in system
+   - System calculates remaining balance
+   - Receipt generated with payment history
+   - Updated rental agreement if applicable
+
+3. **Deposit Return**
+   - Vehicle inspection completed
+   - System calculates refundable deposit amount
+   - Employee prepares cash for return
+   - System generates deposit return receipt
+   - Customer signs receipt acknowledgment
+
+#### 7.1.2 Daily Cash Handling
+1. **Cash Drawer Management**
+   - Opening balance recorded at start of day
+   - Each transaction tracked in system
+   - End-of-day reconciliation process
+   - Discrepancies documented with reason
+
+2. **Cash Security Procedures**
+   - Secure cash drawer with limited access
+   - Regular cash transfers to safe
+   - Dual-control cash counting
+   - Physical security measures
+
+### 7.2 Receipt Management
+
+#### 7.2.1 Receipt Generation
+1. **Receipt Requirements**
+   - Unique sequential receipt number
+   - Date and time of payment
+   - Payment amount and purpose
+   - Rental agreement reference
+   - Customer details
+   - Employee who received payment
+   - Company details and logo
+   - Bilingual format (Arabic and English)
+
+2. **Receipt Types**
+   - Rental payment receipt
+   - Deposit receipt
+   - Deposit return receipt
+   - Additional charges receipt
+   - Duplicate receipt (marked as duplicate)
+
+#### 7.2.2 Receipt Storage
+1. **Digital Storage**
+   - PDF copy stored with rental record
+   - Searchable by receipt number
+   - Accessible for reprinting if needed
+
+2. **Physical Storage**
+   - Office copy filed by date
+   - Retention for minimum 7 years
+   - Organized filing system for retrieval
+
+### 7.3 Payment Reconciliation
+
+#### 7.3.1 Daily Reconciliation Process
+1. **End-of-Day Procedure**
+   - System generates daily cash report
+   - Physical cash counted and verified
+   - Receipts matched to system records
+   - Discrepancies documented
+   - Daily cash report signed by responsible employee
+
+2. **Discrepancy Handling**
+   - Investigation procedure for mismatches
+   - Adjustment recording with approval
+   - Audit trail of corrections
+
+#### 7.3.2 Financial Reporting
+1. **Daily Revenue Reports**
+   - Total collections by category
+   - Outstanding balances
+   - Deposits held
+   - Reconciliation status
+
+2. **Periodic Financial Reports**
+   - Weekly, monthly revenue summaries
+   - Revenue by vehicle category
+   - Payment trend analysis
+   - Cash flow projections
+
+### 7.4 Security and Audit Measures
+
+#### 7.4.1 Cash Handling Security
+1. **Physical Security**
+   - Secure cash drawer
+   - In-office safe
+   - CCTV monitoring of payment area
+   - Limited access to cash storage
+
+2. **Procedural Security**
+   - Two-person verification for large amounts
+   - Regular cash transfers to bank
+   - No overnight cash storage policy
+
+#### 7.4.2 Audit Trail
+1. **System Audit Features**
+   - Every payment transaction logged
+   - User tracking for each transaction
+   - Modification logging with reason
+   - Receipt voiding with approval and reason
+
+2. **Periodic Audits**
+   - Random receipt verification
+   - Payment record audits
+   - Reconciliation review
+   - Procedural compliance checks
+
+---
+
+## 8. Document Management
+
+### 8.1 Document Types and Classification
+
+#### 8.1.1 Vehicle Documents
+1. **Registration Documents**
+   - Vehicle registration card
+   - Insurance certificate
+   - Technical inspection certificate
+   - Commercial transport permit (if applicable)
+
+2. **Maintenance Documents**
+   - Service records
+   - Repair invoices
+   - Warranty documents
+   - Accident reports
+
+3. **Operational Documents**
+   - Vehicle delivery reports
+   - Condition reports
+   - Mileage logs
+   - Fuel records
+
+#### 8.1.2 Customer Documents
+1. **Identification Documents**
+   - Emirates ID / Passport
+   - Residence visa (for residents)
+   - Visit visa (for visitors)
+
+2. **Driving Documents**
+   - UAE driving license
+   - International driving license
+   - Home country driving license
+
+3. **Additional Documents**
+   - Address proof
+   - Employment verification (if required)
+   - Previous rental history
+
+#### 8.1.3 Rental Documents
+1. **Contractual Documents**
+   - Rental agreement
+   - Terms and conditions
+   - Special conditions addendum
+   - Extension agreements
+
+2. **Financial Documents**
+   - Payment receipts
+   - Deposit receipts
+   - Deposit return receipts
+   - Additional charges documentation
+
+3. **Incident Documents**
+   - Accident reports
+   - Damage assessment
+   - Traffic violation notifications
+   - Insurance claims
+
+### 8.2 Document Upload and Storage
+
+#### 8.2.1 Upload Process
+1. **Document Scanning**
+   - Support for direct scanner integration
+   - Mobile camera capture support
+   - Multi-page document handling
+   - Image enhancement and optimization
+
+2. **Upload Interface**
+   - Document type selection
+   - Document classification
+   - Metadata entry
+   - Expiration date setting
+   - Description and notes
+
+3. **File Requirements**
+   - Supported formats: PDF, JPG, PNG
+   - Maximum file size: 10MB
+   - Minimum resolution requirements
+   - File naming convention enforcement
+
+#### 8.2.2 Storage Structure
+1. **Directory Organization**
+   - Primary organization by entity (vehicle, customer, rental)
+   - Secondary organization by document type
+   - Tertiary organization by date
+
+2. **File Naming Convention**
+   - Entity identifier prefix
+   - Document type code
+   - Date in YYYYMMDD format
+   - Random suffix for uniqueness
+
+3. **Storage Security**
+   - Encrypted storage
+   - Access control based on user role
+   - Automatic backup
+   - Version control for document updates
+
+### 8.3 Document Retrieval and Viewing
+
+#### 8.3.1 Search Capabilities
+1. **Search Parameters**
+   - Entity search (by vehicle, customer, rental)
+   - Document type search
+   - Date range search
+   - Full-text search in document metadata
+   - Expiration date search
+
+2. **Results Display**
+   - Thumbnail preview
+   - List view with metadata
+   - Sorting options
+   - Filtering capabilities
+
+#### 8.3.2 Viewing Interface
+1. **Document Viewer**
+   - In-app PDF and image viewing
+   - Zoom and pan capabilities
+   - Rotation and page navigation
+   - Print functionality
+   - Download options
+
+2. **Related Documents**
+   - Display of related documents
+   - Document relationship visualization
+   - Quick navigation between related documents
+
+### 8.4 Document Lifecycle Management
+
+#### 8.4.1 Expiration Tracking
+1. **Expiration Monitoring**
+   - Automatic tracking of document expiry dates
+   - Configurable alert thresholds (30, 15, 7 days)
+   - Dashboard display of expiring documents
+   - Email notifications to responsible staff
+
+2. **Renewal Process**
+   - Renewal task assignment
+   - Renewal status tracking
+   - Replacement document upload
+   - Historical version retention
+
+#### 8.4.2 Archiving and Retention
+1. **Archiving Rules**
+   - Automatic archiving of expired documents
+   - Retention period enforcement
+   - Archival metadata preservation
+   - Archived document access controls
+
+2. **Deletion Process**
+   - Automated deletion recommendations
+   - Approval workflow for document deletion
+   - Deletion audit trail
+   - Metadata retention after deletion
+
+### 8.5 Document Versioning and Audit
+
+#### 8.5.1 Version Control
+1. **Document Versioning**
+   - Automatic version creation on update
+   - Version comparison capability
+   - Reversion to previous versions
+   - Version metadata tracking
+
+2. **Change Tracking**
+   - User tracking for each document action
+   - Timestamp for all document operations
+   - Change reason documentation
+   - Complete audit trail
+
+#### 8.5.2 Document Audit
+1. **Audit Features**
+   - Document access logging
+   - Action logging (view, download, print)
+   - Modification tracking
+   - Deletion records
+
+2. **Audit Reports**
+   - Document access reports
+   - User activity reports
+   - Document lifecycle reports
+   - Compliance verification reports
+
+---
+
+## 9. API Endpoint Specifications
+
+### 9.1 Authentication and Authorization API
+
+#### 9.1.1 Authentication Endpoints
+
+1. **POST /api/auth/login**
+   - **Description**: Authenticates user and returns a JWT token
+   - **Request Body**:
+     ```json
+     {
+       "username": "string",
+       "password": "string"
+     }
+     ```
+   - **Response**:
+     ```json
+     {
+       "token": "string",
+       "user": {
+         "id": "uuid",
+         "username": "string",
+         "first_name": "string",
+         "last_name": "string",
+         "role": "string",
+         "language_preference": "string"
+       },
+       "expires_at": "iso-datetime"
+     }
+     ```
+   - **Status Codes**:
+     - 200: Success
+     - 401: Invalid credentials
+     - 403: Account disabled
+
+2. **POST /api/auth/refresh**
+   - **Description**: Refreshes an existing JWT token
+   - **Request Header**: Authorization: Bearer {token}
+   - **Response**: Same as login response
+   - **Status Codes**:
+     - 200: Success
+     - 401: Invalid or expired token
+
+3. **POST /api/auth/logout**
+   - **Description**: Invalidates the current JWT token
+   - **Request Header**: Authorization: Bearer {token}
+   - **Response**: Empty body
+   - **Status Codes**:
+     - 200: Success
+     - 401: Invalid token
+
+#### 9.1.2 User Management Endpoints
+
+1. **GET /api/users**
+   - **Description**: Retrieves all users (admin only)
+   - **Request Header**: Authorization: Bearer {token}
+   - **Query Parameters**:
+     - page: integer
+     - limit: integer
+     - role: string
+     - active: boolean
+   - **Response**:
+     ```json
+     {
+       "total": "integer",
+       "page": "integer",
+       "limit": "integer",
+       "data": [
+         {
+           "id": "uuid",
+           "username": "string",
+           "first_name": "string",
+           "last_name": "string",
+           "role": "string",
+           "active": "boolean",
+           "email": "string",
+           "phone": "string",
+           "last_login": "iso-datetime",
+           "created_at": "iso-datetime"
+         }
+       ]
+     }
+     ```
+   - **Status Codes**:
+     - 200: Success
+     - 401: Unauthorized
+     - 403: Forbidden (non-admin)
+
+2. **POST /api/users**
+   - **Description**: Creates a new user (admin only)
+   - **Request Header**: Authorization: Bearer {token}
+   - **Request Body**:
+     ```json
+     {
+       "username": "string",
+       "password": "string",
+       "first_name": "string",
+       "last_name": "string",
+       "role": "string",
+       "email": "string",
+       "phone": "string",
+       "language_preference": "string"
+     }
+     ```
+   - **Response**: Created user object
+   - **Status Codes**:
+     - 201: Created
+     - 400: Bad request (validation error)
+     - 403: Forbidden (non-admin)
+     - 409: Conflict (username exists)
+
+3. **GET /api/users/{id}**
+   - **Description**: Retrieves a specific user
+   - **Request Header**: Authorization: Bearer {token}
+   - **Path Parameters**: id: uuid
+   - **Response**: User object
+   - **Status Codes**:
+     - 200: Success
+     - 403: Forbidden (non-admin trying to access other user)
+     - 404: Not found
+
+4. **PUT /api/users/{id}**
+   - **Description**: Updates a user
+   - **Request Header**: Authorization: Bearer {token}
+   - **Path Parameters**: id: uuid
+   - **Request Body**: User object (partial)
+   - **Response**: Updated user object
+   - **Status Codes**:
+     - 200: Success
+     - 400: Bad request
+     - 403: Forbidden
+     - 404: Not found
+
+5. **DELETE /api/users/{id}**
+   - **Description**: Deactivates a user (does not delete)
+   - **Request Header**: Authorization: Bearer {token}
+   - **Path Parameters**: id: uuid
+   - **Response**: Success message
+   - **Status Codes**:
+     - 200: Success
+     - 403: Forbidden
+     - 404: Not found
+
+### 9.2 Vehicle Management API
+
+#### 9.2.1 Vehicle Endpoints
+
+1. **GET /api/vehicles**
+   - **Description**: Retrieves all vehicles with filtering
+   - **Request Header**: Authorization: Bearer {token}
+   - **Query Parameters**:
+     - page: integer
+     - limit: integer
+     - status: string
+     - type: string
+     - make: string
+     - model: string
+     - year: integer
+     - plate_number: string
+     - available_from: date
+     - available_to: date
+   - **Response**:
+     ```json
+     {
+       "total": "integer",
+       "page": "integer",
+       "limit": "integer",
+       "data": [
+         {
+           "id": "uuid",
+           "plate_number": "string",
+           "type": "string",
+           "make": "string",
+           "model": "string",
+           "year": "integer",
+           "color": "string",
+           "status": "string",
+           "daily_rate": "decimal",
+           "deposit_amount": "decimal",
+           "seats": "integer",
+           "mileage": "integer",
+           "last_service": "date",
+           "next_service": "date",
+           "created_at": "iso-datetime"
+         }
+       ]
+     }
+     ```
+   - **Status Codes**:
+     - 200: Success
+     - 401: Unauthorized
+
+2. **POST /api/vehicles**
+   - **Description**: Creates a new vehicle (admin only)
+   - **Request Header**: Authorization: Bearer {token}
+   - **Request Body**:
+     ```json
+     {
+       "plate_number": "string",
+       "type": "string",
+       "make": "string",
+       "model": "string",
+       "year": "integer",
+       "color": "string",
+       "daily_rate": "decimal",
+       "deposit_amount": "decimal",
+       "seats": "integer",
+       "mileage": "integer",
+       "last_service": "date",
+       "next_service": "date",
+       "notes": "string"
+     }
+     ```
+   - **Response**: Created vehicle object
+   - **Status Codes**:
+     - 201: Created
+     - 400: Bad request (validation error)
+     - 403: Forbidden (non-admin)
+     - 409: Conflict (plate number exists)
+
+3. **GET /api/vehicles/{id}**
+   - **Description**: Retrieves a specific vehicle
+   - **Request Header**: Authorization: Bearer {token}
+   - **Path Parameters**: id: uuid
+   - **Response**: Vehicle object with documents
+   - **Status Codes**:
+     - 200: Success
+     - 404: Not found
+
+4. **PUT /api/vehicles/{id}**
+   - **Description**: Updates a vehicle (admin only)
+   - **Request Header**: Authorization: Bearer {token}
+   - **Path Parameters**: id: uuid
+   - **Request Body**: Vehicle object (partial)
+   - **Response**: Updated vehicle object
+   - **Status Codes**:
+     - 200: Success
+     - 400: Bad request
+     - 403: Forbidden (non-admin)
+     - 404: Not found
+
+5. **PATCH /api/vehicles/{id}/status**
+   - **Description**: Updates vehicle status
+   - **Request Header**: Authorization: Bearer {token}
+   - **Path Parameters**: id: uuid
+   - **Request Body**:
+     ```json
+     {
+       "status": "string",
+       "reason": "string"
+     }
+     ```
+   - **Response**: Updated vehicle object
+   - **Status Codes**:
+     - 200: Success
+     - 400: Bad request
+     - 404: Not found
+
+6. **GET /api/vehicles/availability**
+   - **Description**: Checks vehicle availability for a date range
+   - **Request Header**: Authorization: Bearer {token}
+   - **Query Parameters**:
+     - start_date: date
+     - end_date: date
+     - vehicle_type: string
+   - **Response**: List of available vehicles with details
+   - **Status Codes**:
+     - 200: Success
+     - 400: Bad request (invalid dates)
+
+#### 9.2.2 Maintenance Endpoints
+
+1. **GET /api/vehicles/{id}/maintenance**
+   - **Description**: Retrieves maintenance records for a vehicle
+   - **Request Header**: Authorization: Bearer {token}
+   - **Path Parameters**: id: uuid
+   - **Query Parameters**:
+     - page: integer
+     - limit: integer
+     - completed: boolean
+   - **Response**: List of maintenance records
+   - **Status Codes**:
+     - 200: Success
+     - 404: Vehicle not found
+
+2. **POST /api/maintenance**
+   - **Description**: Creates a new maintenance record (admin only)
+   - **Request Header**: Authorization: Bearer {token}
+   - **Request Body**:
+     ```json
+     {
+       "vehicle_id": "uuid",
+       "service_date": "date",
+       "service_type": "string",
+       "cost": "decimal",
+       "odometer": "integer",
+       "workshop": "string",
+       "invoice_number": "string",
+       "details": "string"
+     }
+     ```
+   - **Response**: Created maintenance record
+   - **Status Codes**:
+     - 201: Created
+     - 400: Bad request
+     - 403: Forbidden (non-admin)
+     - 404: Vehicle not found
+
+3. **PUT /api/maintenance/{id}**
+   - **Description**: Updates a maintenance record (admin only)
+   - **Request Header**: Authorization: Bearer {token}
+   - **Path Parameters**: id: uuid
+   - **Request Body**: Maintenance object (partial)
+   - **Response**: Updated maintenance record
+   - **Status Codes**:
+     - 200: Success
+     - 400: Bad request
+     - 403: Forbidden (non-admin)
+     - 404: Not found
+
+4. **PATCH /api/maintenance/{id}/complete**
+   - **Description**: Marks maintenance as completed (admin only)
+   - **Request Header**: Authorization: Bearer {token}
+   - **Path Parameters**: id: uuid
+   - **Request Body**:
+     ```json
+     {
+       "completion_date": "date",
+       "cost": "decimal",
+       "notes": "string"
+     }
+     ```
+   - **Response**: Updated maintenance record
+   - **Status Codes**:
+     - 200: Success
+     - 400: Bad request
+     - 403: Forbidden (non-admin)
+     - 404: Not found
+
+### 9.3 Customer Management API
+
+#### 9.3.1 Customer Endpoints
+
+1. **GET /api/customers**
+   - **Description**: Retrieves all customers with filtering
+   - **Request Header**: Authorization: Bearer {token}
+   - **Query Parameters**:
+     - page: integer
+     - limit: integer
+     - search: string (searches name, phone, email, id_number)
+     - blacklisted: boolean
+   - **Response**:
+     ```json
+     {
+       "total": "integer",
+       "page": "integer",
+       "limit": "integer",
+       "data": [
+         {
+           "id": "uuid",
+           "first_name": "string",
+           "last_name": "string",
+           "phone": "string",
+           "email": "string",
+           "nationality": "string",
+           "id_type": "string",
+           "id_number": "string",
+           "license_number": "string",
+           "license_expiry": "date",
+           "blacklisted": "boolean",
+           "created_at": "iso-datetime"
+         }
+       ]
+     }
+     ```
+   - **Status Codes**:
+     - 200: Success
+     - 401: Unauthorized
+
+2. **POST /api/customers**
+   - **Description**: Creates a new customer
+   - **Request Header**: Authorization: Bearer {token}
+   - **Request Body**:
+     ```json
+     {
+       "first_name": "string",
+       "last_name": "string",
+       "phone": "string",
+       "email": "string",
+       "nationality": "string",
+       "id_type": "string",
+       "id_number": "string",
+       "license_number": "string",
+       "license_expiry": "date",
+       "address": "string",
+       "city": "string",
+       "notes": "string"
+     }
+     ```
+   - **Response**: Created customer object
+   - **Status Codes**:
+     - 201: Created
+     - 400: Bad request (validation error)
+     - 409: Conflict (ID number exists)
+
+3. **GET /api/customers/{id}**
+   - **Description**: Retrieves a specific customer
+   - **Request Header**: Authorization: Bearer {token}
+   - **Path Parameters**: id: uuid
+   - **Response**: Customer object with rental history and documents
+   - **Status Codes**:
+     - 200: Success
+     - 404: Not found
+
+4. **PUT /api/customers/{id}**
+   - **Description**: Updates a customer
+   - **Request Header**: Authorization: Bearer {token}
+   - **Path Parameters**: id: uuid
+   - **Request Body**: Customer object (partial)
+   - **Response**: Updated customer object
+   - **Status Codes**:
+     - 200: Success
+     - 400: Bad request
+     - 404: Not found
+
+5. **PATCH /api/customers/{id}/blacklist**
+   - **Description**: Blacklists or un-blacklists a customer (admin only)
+   - **Request Header**: Authorization: Bearer {token}
+   - **Path Parameters**: id: uuid
+   - **Request Body**:
+     ```json
+     {
+       "blacklisted": "boolean",
+       "blacklist_reason": "string"
+     }
+     ```
+   - **Response**: Updated customer object
+   - **Status Codes**:
+     - 200: Success
+     - 403: Forbidden (non-admin)
+     - 404: Not found
+
+6. **GET /api/customers/search**
+   - **Description**: Quick search for customers
+   - **Request Header**: Authorization: Bearer {token}
+   - **Query Parameters**:
+     - query: string (searches name, phone, ID)
+     - limit: integer
+   - **Response**: List of matching customers (limited fields)
+   - **Status Codes**:
+     - 200: Success
+
+### 9.4 Rental Processing API
+
+#### 9.4.1 Rental Endpoints
+
+1. **GET /api/rentals**
+   - **Description**: Retrieves all rentals with filtering
+   - **Request Header**: Authorization: Bearer {token}
+   - **Query Parameters**:
+     - page: integer
+     - limit: integer
+     - status: string
+     - customer_id: uuid
+     - vehicle_id: uuid
+     - start_date_from: date
+     - start_date_to: date
+     - end_date_from: date
+     - end_date_to: date
+   - **Response**:
+     ```json
+     {
+       "total": "integer",
+       "page": "integer",
+       "limit": "integer",
+       "data": [
+         {
+           "id": "uuid",
+           "contract_number": "string",
+           "status": "string",
+           "vehicle": {
+             "id": "uuid",
+             "plate_number": "string",
+             "make": "string",
+             "model": "string"
+           },
+           "customer": {
+             "id": "uuid",
+             "first_name": "string",
+             "last_name": "string",
+             "phone": "string"
+           },
+           "start_date": "date",
+           "end_date": "date",
+           "total_amount": "decimal",
+           "paid_amount": "decimal",
+           "balance": "decimal",
+           "created_at": "iso-datetime"
+         }
+       ]
+     }
+     ```
+   - **Status Codes**:
+     - 200: Success
+     - 401: Unauthorized
+
+2. **POST /api/rentals**
+   - **Description**: Creates a new rental agreement
+   - **Request Header**: Authorization: Bearer {token}
+   - **Request Body**:
+     ```json
+     {
+       "vehicle_id": "uuid",
+       "customer_id": "uuid",
+       "start_date": "date",
+       "end_date": "date",
+       "pickup_location": "string",
+       "return_location": "string",
+       "initial_mileage": "integer",
+       "daily_rate": "decimal",
+       "deposit": "decimal",
+       "notes": "string"
+     }
+     ```
+   - **Response**: Created rental object with payment details
+   - **Status Codes**:
+     - 201: Created
+     - 400: Bad request (validation error)
+     - 409: Conflict (vehicle not available)
+
+3. **GET /api/rentals/{id}**
+   - **Description**: Retrieves a specific rental
+   - **Request Header**: Authorization: Bearer {token}
+   - **Path Parameters**: id: uuid
+   - **Response**: Rental object with customer, vehicle, payments, and documents
+   - **Status Codes**:
+     - 200: Success
+     - 404: Not found
+
+4. **PATCH /api/rentals/{id}/extend**
+   - **Description**: Extends a rental period
+   - **Request Header**: Authorization: Bearer {token}
+   - **Path Parameters**: id: uuid
+   - **Request Body**:
+     ```json
+     {
+       "new_end_date": "date",
+       "additional_notes": "string"
+     }
+     ```
+   - **Response**: Updated rental object with new calculations
+   - **Status Codes**:
+     - 200: Success
+     - 400: Bad request (invalid date)
+     - 404: Not found
+     - 409: Conflict (vehicle already booked)
+
+5. **PATCH /api/rentals/{id}/return**
+   - **Description**: Processes a vehicle return
+   - **Request Header**: Authorization: Bearer {token}
+   - **Path Parameters**: id: uuid
+   - **Request Body**:
+     ```json
+     {
+       "return_date": "date",
+       "return_mileage": "integer",
+       "additional_charges": [
+         {
+           "description": "string",
+           "amount": "decimal"
+         }
+       ],
+       "deposit_returned": "decimal",
+       "notes": "string"
+     }
+     ```
+   - **Response**: Updated rental object with final calculations
+   - **Status Codes**:
+     - 200: Success
+     - 400: Bad request
+     - 404: Not found
+
+6. **PATCH /api/rentals/{id}/cancel**
+   - **Description**: Cancels a rental agreement
+   - **Request Header**: Authorization: Bearer {token}
+   - **Path Parameters**: id: uuid
+   - **Request Body**:
+     ```json
+     {
+       "cancellation_reason": "string",
+       "deposit_returned": "decimal"
+     }
+     ```
+   - **Response**: Updated rental object
+   - **Status Codes**:
+     - 200: Success
+     - 400: Bad request
+     - 404: Not found
+
+### 9.5 Payment Handling API
+
+#### 9.5.1 Payment Endpoints
+
+1. **GET /api/rentals/{id}/payments**
+   - **Description**: Retrieves all payments for a rental
+   - **Request Header**: Authorization: Bearer {token}
+   - **Path Parameters**: id: uuid
+   - **Response**: List of payment objects
+   - **Status Codes**:
+     - 200: Success
+     - 404: Rental not found
+
+2. **POST /api/payments**
+   - **Description**: Records a new payment
+   - **Request Header**: Authorization: Bearer {token}
+   - **Request Body**:
+     ```json
+     {
+       "rental_id": "uuid",
+       "amount": "decimal",
+       "payment_date": "date",
+       "payment_purpose": "string",
+       "notes": "string"
+     }
+     ```
+   - **Response**: Created payment object with receipt number
+   - **Status Codes**:
+     - 201: Created
+     - 400: Bad request (validation error)
+     - 404: Rental not found
+
+3. **GET /api/payments/{id}**
+   - **Description**: Retrieves a specific payment
+   - **Request Header**: Authorization: Bearer {token}
+   - **Path Parameters**: id: uuid
+   - **Response**: Payment object with rental details
+   - **Status Codes**:
+     - 200: Success
+     - 404: Not found
+
+4. **GET /api/payments/receipt/{receipt_number}**
+   - **Description**: Retrieves a payment by receipt number
+   - **Request Header**: Authorization: Bearer {token}
+   - **Path Parameters**: receipt_number: string
+   - **Response**: Payment object with rental details
+   - **Status Codes**:
+     - 200: Success
+     - 404: Not found
+
+5. **POST /api/payments/{id}/duplicate-receipt**
+   - **Description**: Generates a duplicate receipt
+   - **Request Header**: Authorization: Bearer {token}
+   - **Path Parameters**: id: uuid
+   - **Request Body**:
+     ```json
+     {
+       "reason": "string"
+     }
+     ```
+   - **Response**: Receipt details with duplicate marking
+   - **Status Codes**:
+     - 200: Success
+     - 404: Not found
+
+### 9.6 Document Management API
+
+#### 9.6.1 Document Endpoints
+
+1. **GET /api/{entity_type}/{entity_id}/documents**
+   - **Description**: Retrieves documents for an entity
+   - **Request Header**: Authorization: Bearer {token}
+   - **Path Parameters**:
+     - entity_type: string (vehicle, customer, rental, maintenance)
+     - entity_id: uuid
+   - **Response**: List of document objects
+   - **Status Codes**:
+     - 200: Success
+     - 404: Entity not found
+
+2. **POST /api/documents**
+   - **Description**: Uploads a new document
+   - **Request Header**: Authorization: Bearer {token}
+   - **Request Body**: Multipart form data
+     - file: binary
+     - owner_type: string
+     - owner_id: uuid
+     - type: string
+     - description: string
+     - expiry_date: date (optional)
+   - **Response**: Created document object
+   - **Status Codes**:
+     - 201: Created
+     - 400: Bad request (validation error)
+     - 404: Entity not found
+     - 413: Payload too large
+
+3. **GET /api/documents/{id}**
+   - **Description**: Retrieves document metadata
+   - **Request Header**: Authorization: Bearer {token}
+   - **Path Parameters**: id: uuid
+   - **Response**: Document object
+   - **Status Codes**:
+     - 200: Success
+     - 404: Not found
+
+4. **GET /api/documents/{id}/file**
+   - **Description**: Downloads the document file
+   - **Request Header**: Authorization: Bearer {token}
+   - **Path Parameters**: id: uuid
+   - **Response**: File stream with appropriate content type
+   - **Status Codes**:
+     - 200: Success
+     - 404: Not found
+
+5. **DELETE /api/documents/{id}**
+   - **Description**: Deletes a document (admin only)
+   - **Request Header**: Authorization: Bearer {token}
+   - **Path Parameters**: id: uuid
+   - **Response**: Success message
+   - **Status Codes**:
+     - 200: Success
+     - 403: Forbidden (non-admin)
+     - 404: Not found
+
+### 9.7 Reporting API
+
+#### 9.7.1 Report Endpoints
+
+1. **GET /api/reports/available**
+   - **Description**: Lists all available reports
+   - **Request Header**: Authorization: Bearer {token}
+   - **Response**: List of available report types with parameters
+   - **Status Codes**:
+     - 200: Success
+     - 403: Forbidden (based on role)
+
+2. **GET /api/reports/generate/{report_type}**
+   - **Description**: Generates a report
+   - **Request Header**: Authorization: Bearer {token}
+   - **Path Parameters**: report_type: string
+   - **Query Parameters**: Various based on report type
+   - **Response**: Report data or file download
+   - **Status Codes**:
+     - 200: Success
+     - 400: Bad request (invalid parameters)
+     - 403: Forbidden (based on role)
+
+3. **GET /api/reports/revenue/daily**
+   - **Description**: Generates a daily revenue report
+   - **Request Header**: Authorization: Bearer {token}
+   - **Query Parameters**:
+     - date: date
+   - **Response**: Daily revenue data
+   - **Status Codes**:
+     - 200: Success
+     - 400: Bad request
+     - 403: Forbidden (sales employees)
+
+4. **GET /api/reports/revenue/monthly**
+   - **Description**: Generates a monthly revenue report
+   - **Request Header**: Authorization: Bearer {token}
+   - **Query Parameters**:
+     - year: integer
+     - month: integer
+   - **Response**: Monthly revenue data
+   - **Status Codes**:
+     - 200: Success
+     - 400: Bad request
+     - 403: Forbidden (sales employees)
+
+5. **GET /api/reports/fleet/utilization**
+   - **Description**: Generates a fleet utilization report
+   - **Request Header**: Authorization: Bearer {token}
+   - **Query Parameters**:
+     - start_date: date
+     - end_date: date
+     - vehicle_type: string (optional)
+   - **Response**: Utilization data with statistics
+   - **Status Codes**:
+     - 200: Success
+     - 400: Bad request
+
+6. **GET /api/reports/expiring-documents**
+   - **Description**: Lists documents expiring soon
+   - **Request Header**: Authorization: Bearer {token}
+   - **Query Parameters**:
+     - days: integer (defaults to 30)
+     - document_type: string (optional)
+   - **Response**: List of expiring documents with details
+   - **Status Codes**:
+     - 200: Success
+
+---
+
+## 10. Data Validation Rules
+
+### 10.1 General Validation Principles
+
+#### 10.1.1 Input Sanitization
+1. **String Inputs**
+   - Trim leading and trailing whitespace
+   - Apply appropriate character encoding (UTF-8)
+   - Remove or escape potentially harmful characters
+   - Apply maximum length constraints
+
+2. **Numeric Inputs**
+   - Validate numeric ranges
+   - Apply precision constraints for decimal values
+   - Prevent negative values where inappropriate
+
+3. **Date Inputs**
+   - Validate date format (ISO 8601 preferred)
+   - Apply date range constraints
+   - Ensure logical date sequences (start before end)
+
+4. **Boolean Inputs**
+   - Convert string representations to proper booleans
+   - Handle null/undefined values appropriately
+
+#### 10.1.2 Cross-Field Validation
+1. **Dependency Validation**
+   - Validate required fields based on other field values
+   - Ensure logical relationships between fields
+   - Apply business rules across multiple fields
+
+2. **Aggregate Validation**
+   - Validate collection inputs for uniqueness
+   - Ensure proper totals and balances
+
+3. **Entity Relationship Validation**
+   - Validate foreign key relationships
+   - Ensure proper entity state for operations
+
+### 10.2 Entity-Specific Validation Rules
+
+#### 10.2.1 Vehicle Validation
+1. **Vehicle Registration**
+   - **Plate Number**:
+     - Required
+     - Format: Match UAE plate format (Dubai, Abu Dhabi, etc.)
+     - Uniqueness: Must be unique in the system
+   - **Vehicle Type**:
+     - Required
+     - Enumeration: Must be one of 'car', 'bus', 'van', 'truck'
+   - **Make and Model**:
+     - Required
+     - Length: 2-50 characters
+   - **Year**:
+     - Required
+     - Range: 2000 to current year + 1
+     - Numeric: Integer only
+   - **Daily Rate and Deposit Amount**:
+     - Required
+     - Range: Greater than 0
+     - Precision: 2 decimal places
+
+2. **Vehicle Status Updates**
+   - **Status Change**:
+     - Valid transition check (e.g., cannot go from 'rented' to 'available' without return process)
+     - Required reason for certain transitions (maintenance, out of service)
+   - **Maintenance Scheduling**:
+     - Future date validation for scheduled maintenance
+     - Prevent scheduling during active rental periods
+
+#### 10.2.2 Customer Validation
+1. **Customer Registration**
+   - **Name**:
+     - Required
+     - Length: 2-50 characters
+     - Format: Allow letters, spaces, hyphens, and apostrophes
+   - **Phone**:
+     - Required
+     - Format: UAE phone format validation
+     - Normalized storage (standardized format)
+   - **Email**:
+     - Optional but validated if provided
+     - Format: Standard email validation
+   - **Identification**:
+     - Required
+     - ID Type: Must be one of 'passport', 'national_id', 'residence'
+     - ID Number: Format validation based on type
+     - Uniqueness: Combination of ID type and number must be unique
+   - **Driving License**:
+     - Required
+     - License Number: Format validation
+     - Expiration: Must be future date
+     - Class: Appropriate for vehicle types
+
+2. **Customer Updates**
+   - **Contact Information**:
+     - Format validation for phone and email
+     - Change history tracking
+   - **Document Updates**:
+     - Expiration date validation
+     - Change history tracking
+
+#### 10.2.3 Rental Validation
+1. **Rental Creation**
+   - **Date Range**:
+     - Required
+     - Start Date: Must not be in the past
+     - End Date: Must be after Start Date
+     - Minimum rental duration: 1 day
+   - **Vehicle Availability**:
+     - Vehicle must be in 'available' status
+     - No overlapping rental periods
+     - Vehicle documents must be valid and not expired
+   - **Customer Eligibility**:
+     - Customer must not be blacklisted
+     - Customer documents must be valid and not expired
+     - License class must be appropriate for vehicle
+   - **Financial Terms**:
+     - Daily rate must match or be approved override of vehicle rate
+     - Deposit amount must meet minimum requirements
+     - Total calculation verification
+
+2. **Rental Extensions**
+   - **New End Date**:
+     - Must be after current end date
+     - Vehicle must be available for extended period
+     - Maximum extension period constraints
+   - **Financial Adjustments**:
+     - Additional cost calculations validation
+     - Payment requirements validation
+
+3. **Rental Returns**
+   - **Return Date**:
+     - Cannot be before start date
+     - Validation for early or late returns
+   - **Mileage**:
+     - Return mileage must be greater than initial mileage
+     - Excessive mileage validation
+   - **Financial Closure**:
+     - Balance calculation verification
+     - Deposit return calculation validation
+
+#### 10.2.4 Payment Validation
+1. **Payment Recording**
+   - **Amount**:
+     - Required
+     - Greater than 0
+     - Precision: 2 decimal places
+     - Maximum amount constraints
+   - **Payment Purpose**:
+     - Required
+     - Must be one of defined purposes
+   - **Receipt Number**:
+     - Generated automatically
+     - Uniqueness validation
+   - **Date**:
+     - Required
+     - Cannot be in the future
+     - Within reasonable past range
+
+2. **Payment Updates**
+   - **Modification Restrictions**:
+     - Prevent modification of completed payments
+     - Admin-only adjustments with reason
+   - **Receipt Management**:
+     - Duplicate receipt controls
+     - Voiding process validation
+
+#### 10.2.5 Document Validation
+1. **Document Upload**
+   - **File**:
+     - Required
+     - Size: Maximum 10MB
+     - Type: Limited to allowed MIME types (PDF, JPG, PNG)
+     - Content validation where applicable
+   - **Metadata**:
+     - Required fields based on document type
+     - Owner entity existence validation
+     - Valid expiration date if applicable
+
+2. **Document Updates**
+   - **Version Control**:
+     - Prevent direct updates to existing documents
+     - Create new versions with proper linking
+   - **Expiration Updates**:
+     - Future date validation for expiration
+     - Change tracking requirements
+
+### 10.3 Validation Implementation Guidelines
+
+#### 10.3.1 Frontend Validation
+1. **Form-Level Validation**
+   - Implement client-side validation for immediate feedback
+   - Use Leptos-compatible validation libraries
+   - Apply visual indicators for validation state
+   - Prevent submission of invalid forms
+
+2. **Field-Level Validation**
+   - Apply real-time validation as users type
+   - Show validation messages adjacent to fields
+   - Implement format guidance for complex inputs
+   - Support internationalized validation messages
+
+#### 10.3.2 Backend Validation
+1. **API Validation Layer**
+   - Implement comprehensive server-side validation
+   - Return structured validation errors (field, code, message)
+   - Support internationalized error messages
+   - Maintain validation consistency across endpoints
+
+2. **Database Constraints**
+   - Apply constraints at database level as additional security
+   - Handle constraint violation errors gracefully
+   - Map database constraints to user-friendly messages
+
+3. **Business Rule Validation**
+   - Implement complex business rules in domain layer
+   - Separate validation logic from request handling
+   - Create reusable validation functions for common patterns
+   - Document business rule validations thoroughly
+
+---
+
+## 11. Internationalization Implementation
+
+### 11.1 Bilingual Support Framework
+
+#### 11.1.1 Language Architecture
+1. **Supported Languages**
+   - Arabic (ar): Primary RTL language
+   - English (en): Primary LTR language
+   - Default: English with option to switch
+
+2. **Language Selection**
+   - User preference stored in profile
+   - Session-based language selection
+   - Language toggle in UI
+   - URL-based language indication (/ar/, /en/)
+
+3. **Language Resource Management**
+   - Translation files stored in JSON format
+   - Separate resource files for each language
+   - Namespace organization by feature
+   - Support for pluralization and formatting
+
+#### 11.1.2 Translation Keys Strategy
+1. **Key Organization**
+   - Hierarchical structure (feature.component.text)
+   - Common keys for shared elements
+   - Contextual keys for ambiguous translations
+   - Numbered keys for sequential elements
+
+2. **Key Naming Conventions**
+   - Lowercase with underscores
+   - Descriptive names indicating purpose
+   - Component prefixes for grouping
+   - Action verbs for buttons and actions
+
+3. **Translation Management**
+   - Version control for translation files
+   - Translation update process
+   - Missing translation handling
+   - Translation verification process
+
+### 11.2 Frontend Internationalization
+
+#### 11.2.1 Leptos I18n Implementation
+1. **Translation Integration**
+   - Use Fluent.js integration with Leptos
+   - Reactive language switching
+   - Translation context provider
+   - Component-level translation hooks
+
+2. **RTL Support**
+   - CSS direction handling
+   - Bi-directional text support (Bidi)
+   - RTL-specific styling
+   - Component layout adaptation
+
+3. **Localized Components**
+   - Date pickers with localized calendars
+   - Number formatting with appropriate separators
+   - Currency display with AED symbol
+   - Localized input masks
+
+#### 11.2.2 UI Considerations
+1. **Layout Adaptations**
+   - Flexible layouts that work in both directions
+   - Mirrored UI components for RTL
+   - Positioning adjustments for forms and dialogs
+   - Icon and visual element mirroring
+
+2. **Typography**
+   - Arabic font selection (optimized for on-screen reading)
+   - Font size adjustments for Arabic
+   - Line height and spacing considerations
+   - Mixed text direction handling
+
+3. **Navigation Elements**
+   - Mirrored navigation structure
+   - Directional icons (arrows, carets) adaptation
+   - Drop-down and fly-out menu positioning
+   - Scrollbar positioning
+
+### 11.3 Backend Internationalization
+
+#### 11.3.1 API Localization
+1. **Request Language Detection**
+   - Accept-Language header processing
+   - Language parameter in requests
+   - User preference lookup
+   - Language detection hierarchy
+
+2. **Response Localization**
+   - Error messages in user's language
+   - Date and number formatting
+   - Temporal values in user's timezone
+   - Currency values formatting
+
+3. **API Documentation**
+   - Multilingual API documentation
+   - Example requests and responses in both languages
+   - Error code descriptions in both languages
+
+#### 11.3.2 Data Localization
+1. **Database Content**
+   - Language-specific content columns
+   - Fallback mechanisms for missing translations
+   - Search across multiple language fields
+   - Sorting respecting Arabic collation
+
+2. **Report Generation**
+   - Bilingual report templates
+   - Language selection for reports
+   - Direction handling in PDF generation
+   - Localized charts and graphs
+
+### 11.4 Document Internationalization
+
+#### 11.4.1 Bilingual Document Templates
+1. **Contract Templates**
+   - Dual-language rental agreements
+   - Side-by-side Arabic and English text
+   - Legal terminology consistency
+   - Digital and print format optimization
+
+2. **Receipt Templates**
+   - Bilingual payment receipts
+   - Numeric value formatting appropriate to language
+   - Currency symbol positioning
+   - RTL/LTR layout adaptation
+
+3. **Report Templates**
+   - User-selectable language for reports
+   - Bilingual headers and footers
+   - Language-specific formatting
+   - Data visualization label translation
+
+#### 11.4.2 Document Generation
+1. **Template Engine**
+   - Support for RTL and LTR text in same document
+   - Conditional content based on language
+   - Proper text alignment and justification
+   - Font embedding for consistent display
+
+2. **PDF Generation**
+   - Proper RTL text rendering in PDFs
+   - Embedded fonts for Arabic characters
+   - Page layout adaptation for language
+   - Metadata in user's language
+
+3. **Print Considerations**
+   - Page size and margin optimization
+   - Print preview in correct direction
+   - Printer configuration for language
+
+### 11.5 Testing and Quality Assurance
+
+#### 11.5.1 Internationalization Testing
+1. **Translation Verification**
+   - Completeness check for all translations
+   - Context appropriateness review
+   - Professional translation review
+   - User feedback incorporation
+
+2. **Layout Testing**
+   - RTL layout verification
+   - Text expansion/contraction handling
+   - UI element positioning
+   - Responsive design in both directions
+
+3. **Functionality Testing**
+   - Feature parity across languages
+   - Language switching testing
+   - Form submission with localized data
+   - Error message localization
+
+#### 11.5.2 Cultural Adaptation Verification
+1. **Date and Time Format**
+   - Hijri calendar support
+   - 12/24 hour time format
+   - Weekend definition (Friday-Saturday in UAE)
+   - Working hours adaptation
+
+2. **Number and Currency Format**
+   - Decimal and thousand separators
+   - AED symbol positioning
+   - Arabic numerals option
+   - Percentage and unit formatting
+
+3. **Address and Contact Format**
+   - UAE-specific address format
+   - Phone number formatting
+   - Name ordering appropriate to language
+   - Honorific and title usage
+
+---
+
+## 12. State Management and Transaction Boundaries
+
+### 12.1 Frontend State Management
+
+#### 12.1.1 Leptos State Architecture
+1. **Reactive State Model**
+   - Signals for primitive values
+   - Resources for async data fetching
+   - Actions for user interactions
+   - Effects for side effects
+
+2. **State Organization**
+   - Component-local state
+   - Shared application state
+   - Context-provided state
+   - URL state (route parameters)
+
+3. **State Persistence**
+   - Session storage for transient state
+   - Local storage for user preferences
+   - URL parameters for shareable state
+   - Form state restoration
+
+#### 12.1.2 UI State Patterns
+1. **Form State Management**
+   - Controlled inputs with validation
+   - Multi-step form state
+   - Form dirty state tracking
+   - Form submission and error states
+
+2. **List and Filter State**
+   - Pagination state
+   - Filter criteria state
+   - Sorting state
+   - Selection state
+
+3. **Application State**
+   - Authentication state
+   - User preferences
+   - Notifications state
+   - Modal and dialog states
+
+### 12.2 Backend State Management
+
+#### 12.2.1 Request Processing Pipeline
+1. **Request State Lifecycle**
+   - Request parsing and validation
+   - Authentication and authorization
+   - Business logic execution
+   - Response formation
+
+2. **Stateless API Design**
+   - Self-contained requests
+   - Avoidance of server-side session state
+   - Idempotent operations
+   - Resource-based design
+
+3. **Concurrency Control**
+   - Optimistic concurrency with version stamps
+   - Pessimistic locking for critical operations
+   - Conflict resolution strategies
+   - Deadlock prevention
+
+#### 12.2.2 Database Transaction Management
+1. **Transaction Boundaries**
+   - Service-level transaction boundaries
+   - Single-operation transactions
+   - Multi-operation transactions
+   - Nested transaction handling
+
+2. **Isolation Levels**
+   - Read Committed for general operations
+   - Repeatable Read for reporting queries
+   - Serializable for critical financial operations
+   - Custom isolation for specific operations
+
+3. **Error Handling and Rollback**
+   - Automatic rollback on error
+   - Partial commit prevention
+   - Transaction logging
+   - Recovery procedures
+
+### 12.3 Critical Operation State Management
+
+#### 12.3.1 Rental Operations
+1. **Rental Creation Transaction**
+   - Begin transaction
+   - Check vehicle availability
+   - Update vehicle status to 'rented'
+   - Create rental record
+   - Create payment record for deposit
+   - Generate rental documents
+   - Commit transaction
+
+2. **Rental Return Transaction**
+   - Begin transaction
+   - Update rental status to 'completed'
+   - Update vehicle status to 'available'
+   - Record final charges
+   - Process deposit return
+   - Commit transaction
+
+3. **Rental Extension Transaction**
+   - Begin transaction
+   - Check extended period availability
+   - Update rental end date
+   - Calculate additional charges
+   - Update payment requirements
+   - Commit transaction
+
+#### 12.3.2 Payment Operations
+1. **Payment Recording Transaction**
+   - Begin transaction
+   - Create payment record
+   - Update rental balance
+   - Generate receipt
+   - Commit transaction
+
+2. **Deposit Return Transaction**
+   - Begin transaction
+   - Calculate refundable amount
+   - Record deposit return payment
+   - Update rental status
+   - Generate receipt
+   - Commit transaction
+
+3. **Financial Adjustment Transaction**
+   - Begin transaction (admin only)
+   - Record adjustment reason
+   - Update financial records
+   - Create audit log entry
+   - Commit transaction
+
+#### 12.3.3 Vehicle Status Operations
+1. **Vehicle Maintenance Status Transaction**
+   - Begin transaction
+   - Check vehicle rental status
+   - Update vehicle status to 'maintenance'
+   - Create maintenance record
+   - Commit transaction
+
+2. **Vehicle Return to Service Transaction**
+   - Begin transaction
+   - Update maintenance record as completed
+   - Update vehicle status to 'available'
+   - Update vehicle next service date
+   - Commit transaction
+
+3. **Vehicle Retirement Transaction**
+   - Begin transaction
+   - Update vehicle status to 'out_of_service'
+   - Record retirement reason
+   - Update inventory counts
+   - Commit transaction
+
+### 12.4 Error Recovery Strategies
+
+#### 12.4.1 Transaction Failure Handling
+1. **Automatic Rollback**
+   - Rollback on exception
+   - Log transaction failure details
+   - Notify administrator of critical failures
+   - Maintain system integrity
+
+2. **Manual Recovery Procedures**
+   - Admin interface for transaction review
+   - Transaction replay capabilities
+   - State reconciliation tools
+   - Data consistency checks
+
+3. **Long-Running Transaction Management**
+   - Chunking of large operations
+   - Progress tracking and resumability
+   - Partial results management
+   - Timeout handling
+
+#### 12.4.2 Conflict Resolution
+1. **Optimistic Locking**
+   - Version field on critical entities
+   - Conflict detection and notification
+   - User-friendly retry mechanisms
+   - Merge capability where appropriate
+
+2. **Last-Writer-Wins Strategy**
+   - Timestamp-based resolution
+   - User notification of overwrites
+   - Change tracking for audit
+   - Field-level conflict detection
+
+3. **Conflict Prevention**
+   - UI locking for in-progress editing
+   - Real-time update notifications
+   - Resource reservation mechanisms
+   - Queueing of conflicting operations
+
+---
+
+## 13. Error Handling and User Feedback
+
+### 13.1 Error Classification
+
+#### 13.1.1 Error Categories
+1. **Validation Errors**
+   - Field-level validation failures
+   - Form-level validation failures
+   - Business rule violations
+   - Data format errors
+
+2. **Authentication and Authorization Errors**
+   - Invalid credentials
+   - Session expiration
+   - Insufficient permissions
+   - Resource access restrictions
+
+3. **System Errors**
+   - Database connection failures
+   - File system errors
+   - External service failures
+   - Internal server errors
+
+4. **Business Logic Errors**
+   - Unavailable resources
+   - State transition errors
+   - Constraint violations
+   - Process failures
+
+#### 13.1.2 Error Severity Levels
+1. **Critical**
+   - Data loss potential
+   - System unavailability
+   - Security compromise
+   - Legal compliance issues
+
+2. **Major**
+   - Feature unavailability
+   - Significant workflow disruption
+   - Data integrity issues
+   - Performance degradation
+
+3. **Minor**
+   - Cosmetic issues
+   - Non-critical functionality affected
+   - Temporary glitches
+   - Inconvenience without data impact
+
+4. **Informational**
+   - Notices and warnings
+   - Usage guidance
+   - Best practice suggestions
+   - Process notifications
+
+### 13.2 Error Handling Strategy
+
+#### 13.2.1 Frontend Error Handling
+1. **Form Validation**
+   - Immediate field-level validation
+   - Submit-time form validation
+   - Clear error indicators
+   - Helpful correction guidance
+
+2. **API Error Handling**
+   - Graceful handling of API failures
+   - Retry mechanisms for transient errors
+   - Fallback content when possible
+   - Offline mode considerations
+
+3. **Runtime Error Handling**
+   - Global error boundary
+   - Non-disruptive error recovery
+   - State preservation during errors
+   - Error telemetry and reporting
+
+#### 13.2.2 Backend Error Handling
+1. **Exception Management**
+   - Structured exception hierarchy
+   - Exception middleware for API endpoints
+   - Detailed logging of exceptions
+   - Clean error responses to clients
+
+2. **Transaction Error Handling**
+   - Transaction rollback on errors
+   - Consistent error state
+   - Recovery mechanisms
+   - Admin notification for critical errors
+
+3. **Service Error Handling**
+   - Domain-specific error types
+   - Error propagation policies
+   - Service degradation handling
+   - Fallback strategies
+
+### 13.3 User Feedback Mechanisms
+
+#### 13.3.1 Error Presentation
+1. **Error Messages**
+   - Clear, non-technical language
+   - Context-appropriate messaging
+   - Internationalized error text
+   - Severity-appropriate styling
+
+2. **Notification Types**
+   - Toast messages for transient notifications
+   - Modal dialogs for blocking errors
+   - Inline validation messages
+   - Status area notifications
+
+3. **Error Detail Levels**
+   - Summary message for all users
+   - Detailed explanation for context
+   - Technical details for administrators
+   - Troubleshooting guidance when applicable
+
+#### 13.3.2 Positive Feedback
+1. **Success Indicators**
+   - Operation completion notifications
+   - Progress indicators for long operations
+   - Confirmation messages
+   - Visual success cues
+
+2. **Guidance and Help**
+   - Contextual help
+   - Tool tips and hints
+   - Step-by-step guidance
+   - Keyboard shortcuts and efficiency tips
+
+3. **Status Feedback**
+   - System status indicators
+   - Process status tracking
+   - Background operation notification
+   - Session status information
+
+### 13.4 Error Logging and Monitoring
+
+#### 13.4.1 Logging Strategy
+1. **Log Levels**
+   - ERROR: System errors and exceptions
+   - WARN: Potential issues and anomalies
+   - INFO: Normal operation events
+   - DEBUG: Detailed troubleshooting information
+
+2. **Log Content**
+   - Timestamp and log level
+   - User and session context
+   - Operation being performed
+   - Error details with stack trace
+   - Request and response information
+
+3. **Log Storage**
+   - Rotating file logs
+   - Database error log
+   - Log aggregation strategy
+   - Retention policy
+
+#### 13.4.2 Error Monitoring
+1. **Real-time Monitoring**
+   - Critical error alerts
+   - Error rate monitoring
+   - Pattern detection
+   - Performance impact alerts
+
+2. **Error Analysis**
+   - Error frequency reports
+   - Trend analysis
+   - User impact assessment
+   - Root cause categorization
+
+3. **Continuous Improvement**
+   - Error review process
+   - Prioritization framework
+   - Resolution tracking
+   - Preventive measure implementation
+
+---
+
+## 14. Testing Requirements
+
+### 14.1 Testing Strategy
+
+#### 14.1.1 Testing Levels
+1. **Unit Testing**
+   - Function and method testing
+   - Component unit tests
+   - Service unit tests
+   - Isolated database operation tests
+
+2. **Integration Testing**
+   - API endpoint testing
+   - Service integration tests
+   - Database integration tests
+   - External service integration tests
+
+3. **System Testing**
+   - End-to-end workflow tests
+   - Cross-module functionality tests
+   - Performance tests
+   - Security tests
+
+4. **Acceptance Testing**
+   - User acceptance testing
+   - Compliance verification
+   - Business requirement validation
+   - Usability testing
+
+#### 14.1.2 Testing Approach
+1. **Test-Driven Development**
+   - Write tests before implementation
+   - Red-green-refactor cycle
+   - Test coverage goals
+   - Continuous test execution
+
+2. **Automated Testing**
+   - CI/CD integration
+   - Regression test automation
+   - Scheduled test execution
+   - Test result reporting
+
+3. **Manual Testing**
+   - Exploratory testing
+   - Usability testing
+   - Edge case verification
+   - Real-world scenario testing
+
+### 14.2 Test Types and Coverage
+
+#### 14.2.1 Functional Testing
+1. **Feature Testing**
+   - Test each feature against requirements
+   - Positive and negative test cases
+   - Boundary condition testing
+   - Error handling verification
+
+2. **Workflow Testing**
+   - Complete business process testing
+   - Multi-step operation verification
+   - Alternative path testing
+   - Exception path testing
+
+3. **Cross-functional Testing**
+   - Module interaction testing
+   - Data flow verification
+   - State transition testing
+   - Cross-module reporting tests
+
+#### 14.2.2 Non-functional Testing
+1. **Performance Testing**
+   - Load testing
+   - Stress testing
+   - Endurance testing
+   - Scalability testing
+
+2. **Security Testing**
+   - Authentication and authorization testing
+   - Input validation and sanitization
+   - SQL injection prevention
+   - Cross-site scripting prevention
+   - CSRF protection
+   - Password policy enforcement
+
+3. **Usability Testing**
+   - User interface testing
+   - Accessibility testing
+   - Internationalization testing
+   - Mobile responsiveness testing
+
+4. **Reliability Testing**
+   - Failover testing
+   - Recovery testing
+   - Data backup and restore testing
+   - Error handling testing
+
+### 14.3 Test Environment Requirements
+
+#### 14.3.1 Environment Setup
+1. **Development Environment**
+   - Local developer setup
+   - Isolated database instances
+   - Mock external services
+   - Rapid feedback tooling
+
+2. **Testing Environment**
+   - Dedicated test servers
+   - Test database with realistic data
+   - Controlled network conditions
+   - Monitoring instrumentation
+
+3. **Pre-production Environment**
+   - Production-like configuration
+   - Realistic data volumes
+   - Performance monitoring
+   - Security scanning tools
+
+#### 14.3.2 Test Data Management
+1. **Test Data Generation**
+   - Synthetic data generation
+   - Data anonymization
+   - Realistic data patterns
+   - Edge case data creation
+
+2. **Test Data Reset**
+   - Database reset procedures
+   - Known state establishment
+   - Test isolation techniques
+   - Data cleanup processes
+
+3. **Test Data Versioning**
+   - Test data snapshots
+   - Versioned test datasets
+   - Migration testing data
+   - Performance testing datasets
+
+### 14.4 Testing Tools and Frameworks
+
+#### 14.4.1 Rust Testing Tools
+1. **Unit Testing**
+   - Rust built-in testing framework
+   - `mockall` for mocking
+   - Property-based testing with `proptest`
+   - Snapshot testing tools
+
+2. **Integration Testing**
+   - `reqwest` for API testing
+   - Database testing with `testcontainers-rs`
+   - `wiremock-rs` for external service mocking
+   - Custom test utilities
+
+3. **Web Testing**
+   - Headless browser testing with `fantoccini`
+   - WebDriver integration
+   - DOM testing utilities
+   - Visual regression testing
+
+#### 14.4.2 Test Documentation and Reporting
+1. **Test Planning**
+   - Test strategy documentation
+   - Test case management
+   - Coverage tracking
+   - Test prioritization
+
+2. **Test Execution**
+   - Automated test execution logs
+   - Test result aggregation
+   - Failure analysis tools
+   - Test execution metrics
+
+3. **Test Reporting**
+   - Test coverage reports
+   - Test execution summaries
+   - Trend analysis
+   - Quality dashboards
+
+---
+
+## 15. Deployment Instructions
+
+### 15.1 System Requirements
+
+#### 15.1.1 Hardware Requirements
+1. **Server Specifications**
+   - CPU: 4+ cores, 3.0+ GHz
+   - RAM: 16GB minimum, 32GB recommended
+   - Storage: 500GB SSD minimum
+   - Network: Gigabit Ethernet
+   - Backup: External storage for backups
+
+2. **Client Specifications**
+   - Modern browser-capable devices
+   - Minimum 4GB RAM
+   - Network: Reliable LAN connection
+   - Display: 1080p resolution minimum
+
+3. **Peripherals**
+   - Printer for contracts and receipts
+   - Document scanner
+   - Label printer (optional)
+   - Barcode scanner (optional)
+
+#### 15.1.2 Software Requirements
+1. **Server Software**
+   - Operating System: Ubuntu Server 22.04 LTS or newer
+   - Database: PostgreSQL 15 or newer
+   - Reverse Proxy: Nginx
+   - Containerization: Docker (optional)
+   - Monitoring: Prometheus and Grafana (optional)
+
+2. **Client Software**
+   - Modern web browsers (Chrome, Firefox, Safari, Edge)
+   - PDF viewer
+   - Office suite for report exports
+
+3. **Development Tools**
+   - Rust toolchain (1.75 or newer)
+   - PostgreSQL client tools
+   - Git
+   - Build essentials
+
+### 15.2 Installation Procedure
+
+#### 15.2.1 Database Setup
+1. **PostgreSQL Installation**
+   ```bash
+   # Update package lists
+   sudo apt update
+   
+   # Install PostgreSQL
+   sudo apt install -y postgresql postgresql-contrib
+   
+   # Secure installation
+   sudo -u postgres psql -c "ALTER USER postgres WITH PASSWORD 'secure_password';"
+   
+   # Create database
+   sudo -u postgres createdb rental_system
+   
+   # Create application user
+   sudo -u postgres psql -c "CREATE USER rental_app WITH PASSWORD 'app_password';"
+   sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE rental_system TO rental_app;"
+   ```
+
+2. **Database Configuration**
+   ```bash
+   # Edit PostgreSQL configuration
+   sudo nano /etc/postgresql/15/main/postgresql.conf
+   
+   # Adjust settings for performance
+   max_connections = 100
+   shared_buffers = 4GB
+   work_mem = 64MB
+   maintenance_work_mem = 256MB
+   effective_cache_size = 12GB
+   wal_buffers = 16MB
+   
+   # Restart PostgreSQL
+   sudo systemctl restart postgresql
+   ```
+
+3. **Database Migration**
+   ```bash
+   # Apply database schema
+   cd /path/to/application
+   cargo install sqlx-cli
+   sqlx database create
+   sqlx migrate run
+   ```
+
+#### 15.2.2 Backend Deployment
+1. **Rust Environment Setup**
+   ```bash
+   # Install Rust
+   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+   source $HOME/.cargo/env
+   
+   # Install required components
+   rustup component add clippy rustfmt
+   
+   # Install build dependencies
+   sudo apt install -y build-essential pkg-config libssl-dev
+   ```
+
+2. **Application Deployment**
+   ```bash
+   # Clone repository
+   git clone https://github.com/your-repo/rental-system.git
+   cd rental-system
+   
+   # Build release version
+   cargo build --release
+   
+   # Copy binary and assets
+   sudo mkdir -p /opt/rental-system
+   sudo cp -r target/release/rental-system /opt/rental-system/
+   sudo cp -r config/ /opt/rental-system/
+   sudo cp -r assets/ /opt/rental-system/
+   ```
+
+3. **Service Configuration**
+   ```bash
+   # Create systemd service
+   sudo nano /etc/systemd/system/rental-system.service
+   
+   # Service content
+   [Unit]
+   Description=Rental Management System
+   After=network.target postgresql.service
+   
+   [Service]
+   Type=simple
+   User=rental-app
+   WorkingDirectory=/opt/rental-system
+   ExecStart=/opt/rental-system/rental-system
+   Restart=on-failure
+   Environment="DATABASE_URL=postgres://rental_app:app_password@localhost/rental_system"
+   Environment="RUST_LOG=info"
+   
+   [Install]
+   WantedBy=multi-user.target
+   
+   # Enable and start service
+   sudo systemctl enable rental-system
+   sudo systemctl start rental-system
+   ```
+
+#### 15.2.3 Web Server Configuration
+1. **Nginx Installation**
+   ```bash
+   # Install Nginx
+   sudo apt install -y nginx
+   
+   # Configure firewall
+   sudo ufw allow 'Nginx Full'
+   ```
+
+2. **Nginx Configuration**
+   ```bash
+   # Create site configuration
+   sudo nano /etc/nginx/sites-available/rental-system
+   
+   # Configuration content
+   server {
+       listen 80;
+       server_name your-domain-or-ip;
+   
+       location / {
+           proxy_pass http://localhost:8000;
+           proxy_http_version 1.1;
+           proxy_set_header Upgrade $http_upgrade;
+           proxy_set_header Connection 'upgrade';
+           proxy_set_header Host $host;
+           proxy_cache_bypass $http_upgrade;
+       }
+   }
+   
+   # Enable site
+   sudo ln -s /etc/nginx/sites-available/rental-system /etc/nginx/sites-enabled/
+   sudo nginx -t
+   sudo systemctl restart nginx
+   ```
+
+3. **SSL Configuration (Optional)**
+   ```bash
+   # Install Certbot
+   sudo apt install -y certbot python3-certbot-nginx
+   
+   # Obtain SSL certificate
+   sudo certbot --nginx -d your-domain.com
+   
+   # Auto-renewal
+   sudo systemctl status certbot.timer
+   ```
+
+### 15.3 Configuration Management
+
+#### 15.3.1 Application Configuration
+1. **Environment Variables**
+   - DATABASE_URL: PostgreSQL connection string
+   - RUST_LOG: Logging level configuration
+   - APP_SECRET: Secret for JWT token generation
+   - PORT: Application port (default 8000)
+   - UPLOAD_DIR: Document storage directory
+
+2. **Configuration Files**
+   - `config/app.toml`: Main application configuration
+   - `config/logging.toml`: Logging configuration
+   - `config/templates/`: Document templates
+
+3. **Runtime Configuration**
+   - System settings stored in database
+   - Admin interface for configuration updates
+   - Configuration export/import functionality
+
+#### 15.3.2 Backup and Recovery
+1. **Database Backup**
+   ```bash
+   # Create backup script
+   sudo nano /opt/rental-system/backup.sh
+   
+   # Script content
+   #!/bin/bash
+   BACKUP_DIR="/opt/rental-system/backups"
+   TIMESTAMP=$(date +"%Y%m%d%H%M%S")
+   mkdir -p $BACKUP_DIR
+   pg_dump -U rental_app rental_system | gzip > $BACKUP_DIR/db_backup_$TIMESTAMP.sql.gz
+   
+   # Make executable
+   sudo chmod +x /opt/rental-system/backup.sh
+   
+   # Schedule with cron
+   sudo crontab -e
+   # Add line: 0 1 * * * /opt/rental-system/backup.sh
+   ```
+
+2. **Document Backup**
+   ```bash
+   # Create document backup script
+   sudo nano /opt/rental-system/doc_backup.sh
+   
+   # Script content
+   #!/bin/bash
+   BACKUP_DIR="/opt/rental-system/backups"
+   TIMESTAMP=$(date +"%Y%m%d%H%M%S")
+   mkdir -p $BACKUP_DIR
+   tar -czf $BACKUP_DIR/docs_backup_$TIMESTAMP.tar.gz /opt/rental-system/uploads
+   
+   # Make executable and schedule
+   sudo chmod +x /opt/rental-system/doc_backup.sh
+   sudo crontab -e
+   # Add line: 0 2 * * * /opt/rental-system/doc_backup.sh
+   ```
+
+3. **Recovery Procedure**
+   ```bash
+   # Database restoration
+   gunzip -c /opt/rental-system/backups/db_backup_TIMESTAMP.sql.gz | psql -U rental_app rental_system
+   
+   # Document restoration
+   tar -xzf /opt/rental-system/backups/docs_backup_TIMESTAMP.tar.gz -C /
+   ```
+
+### 15.4 Maintenance Procedures
+
+#### 15.4.1 Routine Maintenance
+1. **Database Maintenance**
+   ```bash
+   # Create maintenance script
+   sudo nano /opt/rental-system/db_maintenance.sh
+   
+   # Script content
+   #!/bin/bash
+   sudo -u postgres psql -d rental_system -c "VACUUM ANALYZE;"
+   sudo -u postgres psql -d rental_system -c "REINDEX DATABASE rental_system;"
+   
+   # Schedule monthly execution
+   sudo crontab -e
+   # Add line: 0 0 1 * * /opt/rental-system/db_maintenance.sh
+   ```
+
+2. **Log Rotation**
+   ```bash
+   # Configure logrotate
+   sudo nano /etc/logrotate.d/rental-system
+   
+   # Configuration content
+   /opt/rental-system/logs/*.log {
+       daily
+       missingok
+       rotate 14
+       compress
+       delaycompress
+       notifempty
+       create 0640 rental-app rental-app
+       sharedscripts
+       postrotate
+           systemctl reload rental-system.service
+       endscript
+   }
+   ```
+
+3. **System Updates**
+   ```bash
+   # Regular updates
+   sudo apt update
+   sudo apt upgrade -y
+   
+   # Restart services after updates
+   sudo systemctl restart postgresql nginx rental-system
+   ```
+
+#### 15.4.2 Monitoring Setup
+1. **Basic Monitoring**
+   ```bash
+   # Install monitoring tools
+   sudo apt install -y htop iotop nmon
+   
+   # Check service status
+   sudo systemctl status rental-system
+   sudo journalctl -u rental-system
+   ```
+
+2. **Advanced Monitoring (Optional)**
+   ```bash
+   # Install Prometheus and Grafana
+   # (Detailed setup instructions omitted for brevity)
+   
+   # Configure application metrics endpoint
+   # Edit config/app.toml to enable metrics
+   ```
+
+3. **Alerting (Optional)**
+   ```bash
+   # Configure email alerts
+   # (Detailed setup instructions omitted for brevity)
+   ```
+
+---
+
+## 16. Performance Optimization
+
+### 16.1 Frontend Performance
+
+#### 16.1.1 WebAssembly Optimization
+1. **Code Size Optimization**
+   - Tree shaking to eliminate unused code
+   - Code splitting for initial load performance
+   - Compression of WASM binary
+   - Lazy loading of features
+
+2. **Rendering Optimization**
+   - Minimizing DOM operations
+   - Using efficient rendering patterns
+   - Avoiding unnecessary re-renders
+   - Virtual list implementation for long lists
+
+3. **Asset Optimization**
+   - Image optimization and lazy loading
+   - Font subsetting
+   - CSS optimization
+   - Static asset caching
+
+#### 16.1.2 Network Optimization
+1. **API Request Optimization**
+   - Request batching
+   - GraphQL for efficient data fetching
+   - Caching frequently used data
+   - Using HTTP/2 for multiplexing
+
+2. **Data Transfer Minimization**
+   - Pagination for large data sets
+   - Selective field fetching
+   - Compression of API responses
+   - Incremental loading of data
+
+3. **Offline Capabilities**
+   - Service worker implementation
+   - Offline-first data strategy
+   - Background synchronization
+   - Local data persistence
+
+### 16.2 Backend Performance
+
+#### 16.2.1 Rust Performance Optimization
+1. **Compiler Optimizations**
+   - Release mode compilation
+   - Link-time optimization
+   - Target-specific optimizations
+   - Profile-guided optimization
+
+2. **Memory Management**
+   - Efficient data structures
+   - Minimizing allocations
+   - Using arena allocators where appropriate
+   - Benchmark-driven optimization
+
+3. **Concurrency Optimization**
+   - Tokio runtime configuration
+   - Work stealing strategies
+   - Thread pool sizing
+   - Async operation batching
+
+#### 16.2.2 Database Optimization
+1. **Query Optimization**
+   - Proper indexing strategy
+   - Query performance analysis
+   - Using prepared statements
+   - Optimizing joins and complex queries
+
+2. **Connection Management**
+   - Connection pooling configuration
+   - Statement caching
+   - Transaction management
+   - Connection timeout handling
+
+3. **Data Access Patterns**
+   - Caching frequently accessed data
+   - Denormalization where appropriate
+   - Read/write splitting
+   - Batch processing
+
+### 16.3 Resource Utilization
+
+#### 16.3.1 Memory Management
+1. **Application Memory**
+   - Heap allocation monitoring
+   - Memory leak prevention
+   - Garbage collection strategies
+   - Buffer sizing optimization
+
+2. **Database Memory**
+   - Proper PostgreSQL memory configuration
+   - Shared buffer optimization
+   - Work memory allocation
+   - Statement memory limits
+
+3. **Caching Strategy**
+   - Multi-level caching
+   - Cache invalidation policy
+   - Cache size limits
+   - Cache hit ratio monitoring
+
+#### 16.3.2 CPU Utilization
+1. **Request Processing**
+   - Asynchronous request handling
+   - CPU-bound task optimization
+   - Background task scheduling
+   - Work distribution
+
+2. **Computation Optimization**
+   - Algorithm efficiency
+   - SIMD instructions where applicable
+   - Avoiding unnecessary calculations
+   - Memoization of expensive operations
+
+3. **I/O Optimization**
+   - Asynchronous I/O operations
+   - Batching disk operations
+   - Using memory-mapped files
+   - File system optimization
+
+### 16.4 Scalability Considerations
+
+#### 16.4.1 Vertical Scaling
+1. **Hardware Upgrades**
+   - CPU scaling guidelines
+   - Memory scaling guidelines
+   - Disk I/O scaling guidelines
+   - Network capacity scaling
+
+2. **Software Scaling**
+   - Thread count optimization
+   - Connection pool sizing
+   - Buffer size adjustments
+   - Lock contention reduction
+
+#### 16.4.2 Horizontal Scaling Preparation
+1. **Service Modularization**
+   - Microservice-ready architecture
+   - Service boundaries definition
+   - Stateless service design
+   - API versioning strategy
+
+2. **Data Partitioning**
+   - Sharding preparation
+   - Multi-tenant isolation
+   - Cross-partition query strategies
+   - Distributed transaction handling
+
+---
+
+## 17. Security Considerations
+
+### 17.1 Authentication and Authorization
+
+#### 17.1.1 Authentication Implementation
+1. **Credential Management**
+   - Secure password storage with Argon2id
+   - Multi-factor authentication support
+   - Password policy enforcement
+   - Account lockout mechanism
+
+2. **Session Management**
+   - JWT token implementation
+   - Secure token storage
+   - Token rotation and expiration
+   - Session invalidation
+
+3. **Authentication Workflows**
+   - Login process security
+   - Password reset mechanism
+   - Remember-me functionality
+   - Login activity monitoring
+
+#### 17.1.2 Authorization Framework
+1. **Role-Based Access Control**
+   - Role definition and hierarchy
+   - Permission assignment
+   - Role inheritance
+   - Dynamic permission checking
+
+2. **Resource Protection**
+   - API endpoint protection
+   - UI component visibility control
+   - Data access filtering
+   - Field-level security
+
+3. **Audit and Compliance**
+   - Access attempt logging
+   - Privileged action recording
+   - Security event alerting
+   - Compliance reporting
+
+### 17.2 Data Protection
+
+#### 17.2.1 Data at Rest
+1. **Database Security**
+   - Encrypted database storage
+   - Tablespace encryption
+   - Backup encryption
+   - Secure database credentials
+
+2. **File Security**
+   - Encrypted document storage
+   - Secure file permissions
+   - Metadata protection
+   - File integrity verification
+
+3. **Configuration Security**
+   - Secure storage of secrets
+   - Environment variable protection
+   - Configuration file security
+   - Credential rotation
+
+#### 17.2.2 Data in Transit
+1. **Transport Security**
+   - TLS 1.3 implementation
+   - Strict transport security
+   - Certificate management
+   - Cipher suite configuration
+
+2. **API Security**
+   - Request signing
+   - API throttling
+   - Input validation
+   - Output sanitization
+
+3. **Network Security**
+   - Firewall configuration
+   - Network segmentation
+   - Intrusion detection
+   - Traffic monitoring
+
+### 17.3 Common Vulnerability Protection
+
+#### 17.3.1 Web Security
+1. **Injection Prevention**
+   - SQL injection protection
+   - Command injection protection
+   - Template injection protection
+   - User input sanitization
+
+2. **Cross-Site Vulnerabilities**
+   - XSS prevention
+   - CSRF protection
+   - Clickjacking protection
+   - Content Security Policy
+
+3. **API Security**
+   - Rate limiting
+   - Request validation
+   - CORS configuration
+   - API versioning
+
+#### 17.3.2 System Security
+1. **Server Hardening**
+   - Minimal installation
+   - Service restriction
+   - User privilege separation
+   - Regular security updates
+
+2. **Monitoring and Detection**
+   - Security logging
+   - Intrusion detection
+   - File integrity monitoring
+   - Anomaly detection
+
+3. **Incident Response**
+   - Security incident procedure
+   - Vulnerability management
+   - Patching strategy
+   - Disaster recovery
+
+### 17.4 Secure Development Practices
+
+#### 17.4.1 Secure Coding
+1. **Code Security**
+   - Security-focused code reviews
+   - Static analysis tools
+   - Dependency vulnerability scanning
+   - Memory safety practices
+
+2. **Dependency Management**
+   - Trusted dependency sources
+   - Regular dependency updates
+   - Vulnerability monitoring
+   - Minimal dependency principle
+
+3. **CI/CD Security**
+   - Secure build process
+   - Artifact signing
+   - Deployment verification
+   - Infrastructure as code security
+
+#### 17.4.2 Security Testing
+1. **Security Testing Types**
+   - Security unit tests
+   - Penetration testing
+   - Vulnerability scanning
+   - Fuzz testing
+
+2. **Security Review**
+   - Architecture security review
+   - Threat modeling
+   - Security design patterns
+   - Attack surface analysis
+
+---
+
+## 18. User Interface Specifications
+
+### 18.1 UI Design Principles
+
+#### 18.1.1 Overall Design Philosophy
+1. **Clean and Professional**
+   - Minimalist design approach
+   - Consistent visual language
+   - Professional color scheme
+   - Clear visual hierarchy
+
+2. **Accessibility**
+   - WCAG 2.1 AA compliance
+   - Keyboard navigation support
+   - Screen reader compatibility
+   - Color contrast requirements
+
+3. **Bilingual Support**
+   - RTL and LTR layout support
+   - Language-specific typography
+   - Culturally appropriate design elements
+   - Consistent bilingual experience
+
+#### 18.1.2 Responsive Design
+1. **Device Support**
+   - Desktop-first design approach
+   - Tablet support
+   - Limited mobile support
+   - Print layout optimization
+
+2. **Layout Approach**
+   - Fluid grid system
+   - Flexible components
+   - Content prioritization
+   - Responsive typography
+
+3. **Navigation Adaptation**
+   - Responsive navigation patterns
+   - Context-aware menus
+   - Persistent critical functions
+   - Breadcrumb navigation
+
+### 18.2 UI Components
+
+#### 18.2.1 Core Components
+1. **Navigation Components**
+   - Main navigation menu
+   - Sidebar navigation
+   - Breadcrumb trail
+   - Quick action menu
+
+2. **Form Components**
+   - Input fields with validation
+   - Selection controls
+   - Date and time pickers
+   - File upload components
+
+3. **Data Display Components**
+   - Data tables with sorting and filtering
+   - Cards for entity display
+   - Detailed view layouts
+   - Charts and visualization components
+
+4. **Feedback Components**
+   - Notification system
+   - Progress indicators
+   - Status messages
+   - Confirmation dialogs
+
+#### 18.2.2 Specialized Components
+1. **Rental Processing Components**
+   - Rental agreement wizard
+   - Vehicle selection interface
+   - Date range selector
+   - Payment recording interface
+
+2. **Document Management Components**
+   - Document upload interface
+   - Document viewer
+   - Document organization tools
+   - Document expiration tracker
+
+3. **Reporting Components**
+   - Report parameter interface
+   - Report preview
+   - Export options
+   - Saved report management
+
+### 18.3 Screen Specifications
+
+#### 18.3.1 Common Layouts
+1. **Dashboard Layout**
+   ```
+   +----------------------------------------+
+   | Logo  | Search | Notifications | User  |
+   +----------------------------------------+
+   | Main  |                               |
+   | Nav   |     Dashboard Content         |
+   | Menu  |                               |
+   |       |     (Cards, Charts, Stats)    |
+   |       |                               |
+   +----------------------------------------+
+   |             Footer                     |
+   +----------------------------------------+
+   ```
+
+2. **List View Layout**
+   ```
+   +----------------------------------------+
+   | Logo  | Search | Notifications | User  |
+   +----------------------------------------+
+   | Main  | Breadcrumb                     |
+   | Nav   +-------------------------------+
+   | Menu  | Filters | Actions | Export    |
+   |       +-------------------------------+
+   |       |                               |
+   |       |      Data Table               |
+   |       |                               |
+   |       +-------------------------------+
+   |       | Pagination                    |
+   +----------------------------------------+
+   |             Footer                     |
+   +----------------------------------------+
+   ```
+
+3. **Detail View Layout**
+   ```
+   +----------------------------------------+
+   | Logo  | Search | Notifications | User  |
+   +----------------------------------------+
+   | Main  | Breadcrumb                     |
+   | Nav   +-------------------------------+
+   | Menu  | Entity Header | Actions       |
+   |       +-------------------------------+
+   |       |              |                |
+   |       | Main Content | Related Info   |
+   |       |              |                |
+   |       |              |                |
+   |       +-------------------------------+
+   |       | Tabs for related data         |
+   +----------------------------------------+
+   |             Footer                     |
+   +----------------------------------------+
+   ```
+
+#### 18.3.2 Key Screen Wireframes
+
+1. **Vehicle Management Screens**
+   - Vehicle List Screen
+     - Filters: status, type, availability
+     - Columns: plate, make, model, year, status, daily rate
+     - Actions: add, edit, view, change status
+   - Vehicle Detail Screen
+     - Sections: details, documents, maintenance, rental history
+     - Actions: edit, maintenance, upload document
+   - Vehicle Registration Screen
+     - Form: vehicle details, rates, documents
+     - Validation: required fields, format validation
+
+2. **Customer Management Screens**
+   - Customer List Screen
+     - Filters: name, phone, blacklist status
+     - Columns: name, phone, email, ID details, status
+     - Actions: add, edit, view, blacklist
+   - Customer Detail Screen
+     - Sections: personal details, documents, rental history
+     - Actions: edit, upload document, new rental
+   - Customer Registration Screen
+     - Form: personal details, ID information, documents
+     - Validation: required fields, format validation
+
+3. **Rental Processing Screens**
+   - Active Rentals Screen
+     - Filters: status, date range, customer
+     - Columns: contract number, customer, vehicle, dates, status
+     - Actions: view, extend, return, cancel
+   - New Rental Wizard
+     - Steps: customer selection, vehicle selection, dates and terms, payment, confirmation
+     - Features: availability checking, cost calculation, document generation
+   - Rental Detail Screen
+     - Sections: rental details, customer info, vehicle info, payments, documents
+     - Actions: extend, return, payment, upload document
+
+4. **Payment Handling Screens**
+   - Payment Recording Screen
+     - Form: amount, payment type, date, purpose
+     - Features: balance calculation, receipt generation
+   - Payment History Screen
+     - Filters: date range, rental, customer
+     - Columns: date, amount, receipt number, purpose
+     - Actions: view receipt, duplicate receipt
+   - Receipt View Screen
+     - Sections: receipt details, payment information, business details
+     - Actions: print, download, email
+
+### 18.4 UI State Handling
+
+#### 18.4.1 Loading States
+1. **Initial Loading**
+   - Application loading splash screen
+   - Progressive content loading
+   - Resource preloading strategies
+   - Fallback content during loading
+
+2. **Data Loading**
+   - Skeletal loading patterns
+   - Loading indicators for operations
+   - Progressive loading for large datasets
+   - Background loading for anticipated needs
+
+3. **Operation Processing**
+   - Operation progress indicators
+   - Background operation status
+   - Cancellation options for long operations
+   - Success and completion feedback
+
+#### 18.4.2 Error States
+1. **Form Validation Errors**
+   - Field-level error indicators
+   - Form-level error summaries
+   - Inline correction guidance
+   - Error state persistence during correction
+
+2. **Data Access Errors**
+   - Empty state displays
+   - Data loading error handling
+   - Retry mechanisms
+   - Graceful degradation
+
+3. **System Errors**
+   - Error boundary implementation
+   - User-friendly error messages
+   - Recovery guidance
+   - Error reporting options
+
+---
+
+## 19. Domain-Specific Terminology
+
+### 19.1 Vehicle Rental Terms
+
+#### 19.1.1 Vehicle Classification
+1. **Vehicle Types**
+   - **Car**: Standard passenger vehicle
+   - **Bus**: Passenger vehicle with 10+ seats
+   - **Van**: Utility vehicle for cargo or passengers
+   - **Truck**: Commercial freight vehicle
+
+2. **Vehicle Categories**
+   - **Economy**: Basic small vehicles
+   - **Compact**: Small to medium sized vehicles
+   - **Sedan**: Standard 4-door vehicles
+   - **SUV**: Sport utility vehicles
+   - **Luxury**: Premium vehicles with advanced features
+   - **Minibus**: Small buses (10-25 seats)
+   - **Coach**: Large buses (25+ seats)
+
+3. **Vehicle Status**
+   - **Available**: Ready for rental
+   - **Rented**: Currently under rental contract
+   - **Maintenance**: Undergoing service or repair
+   - **Out of Service**: Temporarily or permanently unavailable
+
+#### 19.1.2 Rental Terms
+1. **Rental Period**
+   - **Start Date**: Beginning of rental period
+   - **End Date**: Scheduled end of rental period
+   - **Extension**: Additional rental days added
+   - **Early Return**: Return before scheduled end date
+   - **Late Return**: Return after scheduled end date
+
+2. **Rental Rates**
+   - **Daily Rate**: Cost per day of rental
+   - **Weekly Rate**: Discounted rate for 7+ days
+   - **Monthly Rate**: Discounted rate for 30+ days
+   - **Additional Driver Fee**: Charge for extra authorized drivers
+   - **Mileage Allowance**: Included kilometers/miles
+
+3. **Rental Status**
+   - **Active**: Current ongoing rental
+   - **Completed**: Rental finished with vehicle returned
+   - **Extended**: Rental period extended from original
+   - **Overdue**: Vehicle not returned by due date
+   - **Cancelled**: Rental agreement terminated before start
+
+### 19.2 Financial Terms
+
+#### 19.2.1 Payment Terms
+1. **Payment Types**
+   - **Rental Payment**: Payment for rental service
+   - **Deposit**: Security deposit held during rental
+   - **Deposit Return**: Refund of security deposit
+   - **Additional Charge**: Extra fees beyond basic rental
+   - **Refund**: Money returned to customer
+
+2. **Financial Documents**
+   - **Rental Agreement**: Contract between company and customer
+   - **Receipt**: Proof of payment document
+   - **Invoice**: Itemized bill for services
+   - **Deposit Slip**: Document acknowledging deposit receipt
+   - **Refund Voucher**: Document authorizing refund
+
+3. **Financial Calculations**
+   - **Subtotal**: Sum of rental charges before tax
+   - **Tax**: Government-required tax amount
+   - **Total Amount**: Full rental cost including tax
+   - **Paid Amount**: Sum of payments received
+   - **Balance**: Remaining amount due
+   - **Deposit Deduction**: Amount withheld from deposit
+
+### 19.3 UAE-Specific Terms
+
+#### 19.3.1 Documentation Terms
+1. **Identification Documents**
+   - **Emirates ID**: UAE national identification card
+   - **Residence Visa**: UAE residency permit
+   - **Visit Visa**: Temporary visitor permit
+   - **GCC ID**: Gulf Cooperation Council identification
+   - **Driving License**: UAE or international driving permit
+
+2. **Vehicle Documents**
+   - **Mulkiya**: UAE vehicle registration card
+   - **Insurance Policy**: Vehicle insurance certificate
+   - **Technical Test Certificate**: Vehicle inspection certificate
+   - **RTA Permit**: Roads and Transport Authority permit
+
+3. **Regulatory Terms**
+   - **Salik**: Dubai toll gate system
+   - **Traffic Violation**: Infringement of traffic laws
+   - **Black Points**: UAE driving penalty system
+   - **NOC**: No Objection Certificate
+
+#### 19.3.2 Business Operation Terms
+1. **Operational Terms**
+   - **Trade License**: Business operation permit
+   - **VAT Registration**: Tax registration number
+   - **Commercial Register**: Business registry entry
+   - **MOI Approval**: Ministry of Interior approval
+
+2. **Customer Classification**
+   - **Resident**: UAE resident customer
+   - **Tourist**: Visitor on tourist visa
+   - **Business Visitor**: Visitor on business visa
+   - **Corporate Client**: Company with account
+
+---
+
+## 20. Implementation Recommendations
+
+### 20.1 Rust Implementation Guidelines
+
+#### 20.1.1 Code Organization
+1. **Project Structure**
+   - Separate crates for frontend and backend
+   - Feature-based module organization
+   - Clear separation of concerns
+   - Domain-driven design principles
+
+2. **Code Conventions**
+   - Follow Rust API Guidelines
+   - Consistent error handling pattern
+   - Documentation for public APIs
+   - Property and integration testing
+
+3. **Performance Considerations**
+   - Minimize allocations in hot paths
+   - Profile-guided optimization
+   - Benchmarking critical components
+   - Memory usage optimization
+
+#### 20.1.2 Common Pitfalls
+1. **Ownership and Borrowing**
+   - Avoiding unnecessary clones
+   - Proper lifetime annotations
+   - Understanding move semantics
+   - Using references appropriately
+
+2. **Async Programming**
+   - Proper async function composition
+   - Avoiding blocking operations in async context
+   - Understanding Tokio runtime
+   - Managing task cancellation
+
+3. **Error Handling**
+   - Consistent error propagation
+   - Custom error types with thiserror
+   - Context-rich error messages
+   - Proper error conversion
+
+### 20.2 WebAssembly Recommendations
+
+#### 20.2.1 WASM Optimization
+1. **Size Optimization**
+   - Code splitting for large applications
+   - Tree shaking unused code
+   - Compressed binary format
+   - Lazy loading of features
+
+2. **Performance Considerations**
+   - Minimizing DOM operations
+   - Efficient rendering strategies
+   - Memory management
+   - Benchmarking critical paths
+
+3. **Browser Compatibility**
+   - WebAssembly feature detection
+   - Fallback for unsupported browsers
+   - Polyfills for missing features
+   - Testing across browsers
+
+#### 20.2.2 Leptos Best Practices
+1. **State Management**
+   - Proper signal usage
+   - Minimizing signal dependencies
+   - Batch updates when possible
+   - Context providers for shared state
+
+2. **Component Design**
+   - Single-responsibility components
+   - Composition over inheritance
+   - Proper props management
+   - Memoization of expensive calculations
+
+3. **Rendering Optimization**
+   - Avoiding unnecessary re-renders
+   - Using keyed lists
+   - Virtual scrolling for long lists
+   - Suspense for async data loading
+
+### 20.3 Bilingual Interface Implementation
+
+#### 20.3.1 RTL Support Strategies
+1. **CSS Approaches**
+   - CSS logical properties (start/end)
+   - CSS Grid and Flexbox for flexible layouts
+   - Direction-aware styling
+   - RTL-specific overrides when necessary
+
+2. **Component Design**
+   - Direction-neutral component layouts
+   - Mirroring for directional elements
+   - Icon and visual mirroring
+   - Text alignment adaptation
+
+3. **Testing and Verification**
+   - Visual regression testing
+   - Direction-specific test cases
+   - Bilingual preview mode
+   - Comprehensive RTL testing
+
+#### 20.3.2 Translation Management
+1. **Translation Workflow**
+   - Extraction of translatable strings
+   - Professional translation process
+   - Context provision for translators
+   - Translation verification
+
+2. **Runtime Translation**
+   - Efficient translation lookup
+   - Fallback for missing translations
+   - Formatting with variables
+   - Pluralization support
+
+3. **Text Expansion Handling**
+   - Flexible layouts for text expansion
+   - Truncation strategies when needed
+   - Testing with expanded text
+   - Monitoring text overflow
+
+### 20.4 Database Best Practices
+
+#### 20.4.1 PostgreSQL Optimization
+1. **Schema Design**
+   - Proper normalization
+   - Appropriate data types
+   - Constraint definitions
+   - Indexing strategy
+
+2. **Query Optimization**
+   - Prepared statements
+   - Indexed access paths
+   - Query plan analysis
+   - Join optimization
+
+3. **Performance Tuning**
+   - Connection pooling
+   - Statement caching
+   - Vacuum and analyze strategy
+   - Buffer configuration
+
+#### 20.4.2 SQLx Usage
+1. **Type-safe Queries**
+   - Compile-time query checking
+   - Proper type mapping
+   - Error handling
+   - Transaction management
+
+2. **Migration Management**
+   - Version-controlled migrations
+   - Backward compatible changes
+   - Testing migrations
+   - Rollback procedures
+
+3. **Query Construction**
+   - Parameterized queries
+   - Dynamic query building
+   - Result mapping
+   - Batch operations
+
+---
+
+## 21. Appendices
+
+### 21.1 Glossary of Terms
+A comprehensive list of domain-specific terms and their definitions has been provided in Section 19.
+
+### 21.2 Reference Documents
+1. UAE Transport Authority Regulations
+2. Vehicle Rental Business Requirements
+3. UAE Data Protection Law
+4. Rust Programming Language Documentation
+5. PostgreSQL Documentation
+
+### 21.3 Change Management
+All future changes to this specification should be documented in a version control system with proper change logs, approval workflows, and impact assessments.
+
+
+---
+
+*End of Document*
